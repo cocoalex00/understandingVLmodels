@@ -1,0 +1,5 @@
+			## LXMERT ## 
+
+- github/data/Places/process_raw_csv/process_dataset.py  -> Process csv file into json file
+- github/data/Places/extract_places_images.py		 -> Extract visual features from datasets
+- github/src/tasks/places_data.py                        -> Dataset class for Places365 (image classification) 

@@ -1,0 +1,35 @@
+---------------------------------Important files for fine-tuning:----------------------------------------------
+	
+	- train_tasks.py -> contains the fine-tuning loops and code.
+	- vilbert_tasks.yml -> contains the information about the different tasks (TASK 7 and 8 Retrieval)
+	- vilbert/task_utils.py -> contains useful functions (such as LoadDatasets)
+	- vilbert/datasets/retrieval_dataset.py -> contains the dataset Pytorch classes for the retrieval tasks.
+
+
+
+
+---------------------------------ViLBERT pipeline:----------------------------------------------
+	-
+
+
+
+
+
+
+
+
+
+
+---------------------------------Useful things:----------------------------------------------
+	
+	-jsonline style for training:
+
+{"id": 522418, "img_path": "images_val2014/COCO_val2014_000000522418.jpg", "sentences": ["a woman wearing a net on her head cutting a cake  ", "a woman cutting a large white sheet cake", "a woman wearing a hair net cutting a large sheet cake", "there is a woman that is cutting a white cake", "a woman marking a cake with the back of a chef s knife  "]}
+{"id": 318219, "img_path": "images_val2014/COCO_val2014_000000318219.jpg", "sentences": ["a young boy standing in front of a computer keyboard", "a little boy wearing headphones and looking at a computer monitor", "he is listening intently to the computer at school", "a young boy stares up at the computer monitor", "a young kid with head phones on using a computer "]}
+{"id": 554625, "img_path": "images_val2014/COCO_val2014_000000554625.jpg", "sentences": ["a boy wearing headphones using one computer in a long row of computers", "a little boy with earphones on listening to something", "a group of people sitting at desk using computers", "children sitting at computer stations on a long table", "a small child wearing headphones plays on the computer"]}
+{"id": 397133, "img_path": "images_val2014/COCO_val2014_000000397133.jpg", "sentences": ["a man is in a kitchen making pizzas", "man in apron standing on front of oven with pans and bakeware", "a baker is working in the kitchen rolling dough", "a person standing by a stove in a kitchen", "a table with pies being made and a person standing near a wall with pots and pans hanging on the wall"]}
+
+
+	-jsonline style for testing:
+
+{"sentences": ["four bowls containing fruits and vegetables arranged decoratively"], "id": 354165, "img_path": "images_val2014/COCO_val2014_000000354165.jpg"}

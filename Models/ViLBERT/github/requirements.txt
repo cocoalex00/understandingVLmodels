@@ -1,0 +1,17 @@
+pytorch-transformers==1.0.0
+numpy
+lmdb==0.94
+tensorboardX==1.2
+tensorflow==2.5.2
+tensorpack==0.9.4
+tqdm==4.31.1
+easydict==1.9
+PyYAML==5.4
+jsonlines==1.2.0
+json-lines==0.5.0
+matplotlib
+Cython
+python-prctl==1.8.1
+msgpack
+msgpack-numpy
+opencv-python==4.2.0.34

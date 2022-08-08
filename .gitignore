@@ -1,0 +1,8 @@
+*.pth
+runs/
+pretrained/
+*.tsv
+*.arrow
+checkpoints/
+bottom-up-attention/
+pretrained_model/
