@@ -371,7 +371,8 @@ def main():
 
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
-    except:
+    except Exception as e:
+        print(e)
         # when sigterm caught, save checkpoint and exit
         
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel

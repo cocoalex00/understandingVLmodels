@@ -1348,16 +1348,16 @@ class BertModel(BertPreTrainedModel):
         # Since we are adding it to the raw scores before the softmax, this is
         # effectively the same as removing these entirely.
         extended_attention_mask = extended_attention_mask.to(
-            dtype=next(self.parameters()).dtype
+            dtype=torch.float32
         )  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         extended_attention_mask2 = extended_attention_mask2.to(
-            dtype=next(self.parameters()).dtype
+            dtype=torch.float32
         )  # fp16 compatibility
 
         extended_image_attention_mask = extended_image_attention_mask.to(
-            dtype=next(self.parameters()).dtype
+            dtype=torch.float32
         )  # fp16 compatibility
         extended_image_attention_mask = (1.0 - extended_image_attention_mask) * -10000.0
 
@@ -1371,7 +1371,7 @@ class BertModel(BertPreTrainedModel):
         # extended_co_attention_mask = co_attention_mask.unsqueeze(-1)
         extended_co_attention_mask = extended_co_attention_mask * 5.0
         extended_co_attention_mask = extended_co_attention_mask.to(
-            dtype=next(self.parameters()).dtype
+            dtype=torch.float32
         )  # fp16 compatibility
 
         embedding_output = self.embeddings(input_txt, token_type_ids, task_ids)
@@ -1691,7 +1691,7 @@ class VILBertForVLTasks(BertPreTrainedModel):
         vil_tri_prediction = self.vil_tri_prediction(pooled_output)
         vision_logit = self.vision_logit(self.dropout(sequence_output_v)) + (
             (1.0 - image_attention_mask) * -10000.0
-        ).unsqueeze(2).to(dtype=next(self.parameters()).dtype)
+        ).unsqueeze(2).to(dtype=torch.float32)
         linguisic_logit = self.linguisic_logit(self.dropout(sequence_output_t))
 
         return (

@@ -107,7 +107,7 @@ def _load_dataset(annotations_path):
             dictionary["text_input"] = [101,102]
 
             ### FIND OUT REAL NAME OF FILES FOR SERVER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            dictionary["db_id"] = str(annotation["img_path"].split(".")[0])
+            dictionary["db_id"] = str(annotation["img_name"])
 
             dictionary["input_mask"] = [1] * len(dictionary["text_input"])
             dictionary["segment_ids"] = [0] * len(dictionary["text_input"])
@@ -131,9 +131,8 @@ def get_data_loader(annotations_jsonpath: str, TSV_path: str, batch_size: int = 
     """
 
     #Create the feature reader and dataset
-    image_features = _load_obj_tsv(TSV_path)
 
-    dataset = ImageClassificationDataset(annotations_jsonpath, image_features,max_region_num,test)
+    dataset = ImageClassificationDataset(annotations_jsonpath,TSV_path ,max_region_num,test)
 
     if multi_gpu:
         sampler = DistributedSampler(dataset=dataset)
@@ -166,7 +165,7 @@ class ImageClassificationDataset(Dataset):
     def __init__(
         self,
         annotations_jsonpath: str,
-        image_features,
+        TSV_path,
         #image_features_reader: ImageFeaturesH5Reader,
         max_region_num: int = 37,
         test: bool=False
@@ -174,11 +173,8 @@ class ImageClassificationDataset(Dataset):
         super().__init__()
         self._max_region_num = max_region_num
         self.num_labels = 365
-        self.image_features = image_features
         self.entries = _load_dataset(annotations_jsonpath)
-        self.imgid2img = {}
-        for img_datum in image_features:
-            self.imgid2img[img_datum['img_id']] = img_datum
+        self.tsvroot = TSV_path
 
         self.test = test
 
@@ -188,11 +184,32 @@ class ImageClassificationDataset(Dataset):
         
         entry = self.entries[index]                                             # Read input
         db_id = entry["db_id"]  
+        pathname = self.tsvroot + db_id + ".tsv"
         #print(self.image_features)
         # Read image features from tsv file                                                
-        features = self.imgid2img[db_id]["features"]
-        num_boxes = self.imgid2img[db_id]["num_boxes"] 
-        boxes = self.imgid2img[db_id]["boxes"]      # Read image features
+        with open(pathname) as f:
+            for data in csv.DictReader(f, FIELDNAMES, delimiter="\t"):
+
+                for key in ['img_h', 'img_w', 'num_boxes']:
+                    data[key] = int(data[key])
+            
+                boxes = data['num_boxes']
+                decode_config = [
+                    ('objects_id', (boxes, ), np.int64),
+                    ('objects_conf', (boxes, ), np.float32),
+                    ('attrs_id', (boxes, ), np.int64),
+                    ('attrs_conf', (boxes, ), np.float32),
+                    ('boxes', (boxes, 4), np.float32),
+                    ('features', (boxes, -1), np.float32),
+                ]
+                for key, shape, dtype in decode_config:
+                    data[key] = np.frombuffer(base64.b64decode(data[key]), dtype=dtype)
+                    data[key] = data[key].reshape(shape)
+                    data[key].setflags(write=False)
+
+                features = data["features"]
+                num_boxes = data["num_boxes"] 
+                boxes = data["boxes"]      # Read image features
         
 
         # Preprocess visual features with masks and padding and stuff
