@@ -326,6 +326,7 @@ def main():
                 # Add loss to list
                 running_loss_train += loss.item()
 
+                print(f"batch {i}, loss: {loss.item()}")
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
                 scaler.step(optimizer)              # Run an optimizer step

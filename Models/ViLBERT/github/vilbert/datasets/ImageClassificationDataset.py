@@ -120,7 +120,7 @@ def _load_dataset(annotations_path):
     return entries
 
 
-def get_data_loader(annotations_jsonpath: str, TSV_path: str, batch_size: int = 16, max_region_num: int=37, shuffle: bool=False, multi_gpu: bool=False, test: bool= False):
+def get_data_loader(annotations_jsonpath: str, TSV_path: str, batch_size: int = 16, max_region_num: int=37, shuffle: bool=True, multi_gpu: bool=False, test: bool= False):
     """Get a data loader ready from a lmdb and jasonline files
 
     annotations_jsonpath: path to the jsonline file for the dataset
