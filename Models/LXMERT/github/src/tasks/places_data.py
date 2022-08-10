@@ -9,12 +9,18 @@ import torch
 
 from .param import args
 from .utils import load_obj_tsv
+import csv
+import sys 
+csv.field_size_limit(sys.maxsize)
 
 # Load part of the dataset for fast checking.
 # Notice that here is the number of images instead of the number of data,
 # which means all related data to the images would be used.
 TINY_IMG_NUM = 512
 FAST_IMG_NUM = 5000
+
+FIELDNAMES = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
+              "attrs_id", "attrs_conf", "num_boxes", "boxes", "features"]
 
 
 class PlacesDataset:
@@ -66,17 +72,18 @@ class PlacesTorchDataset(Dataset):
         self.test = test
 
         # Loading detection features to img_data
-        img_data = []
-        img_data.extend(load_obj_tsv(self.raw_dataset.imgfeatpath, topk=topk))
-        self.imgid2img = {}
-        for img_datum in img_data:
-            self.imgid2img[img_datum['img_id']] = img_datum
+        #img_data = []
+        #img_data.extend(load_obj_tsv(self.raw_dataset.imgfeatpath, topk=topk))
+        # self.imgid2img = {}
+        # for img_datum in img_data:
+        #     self.imgid2img[img_datum['img_id']] = img_datum
 
         # Filter out the dataset
-        self.data = []
-        for datum in self.raw_dataset.data:
-            if datum['img_name'] in self.imgid2img:
-                self.data.append(datum)
+        self.data = self.raw_dataset.data
+        # for datum in self.raw_dataset.data:
+        #     if datum['img_name'] in self.imgid2img:
+        #         self.data.append(datum)
+        
         print("Use %d data in torch dataset" % (len(self.data)))
         print()
 
@@ -90,14 +97,43 @@ class PlacesTorchDataset(Dataset):
         textInput = " "
 
          # Get image info
-        img_info = self.imgid2img[img_id]
-        obj_num = img_info['num_boxes']
-        boxes = img_info['boxes'].copy()
-        feats = img_info['features'].copy()
+        pathname = self.raw_dataset.imgfeatpath + db_id + ".tsv"
+
+        with open(pathname) as f:
+            for data in csv.DictReader(f, FIELDNAMES, delimiter="\t"):
+
+                for key in ['img_h', 'img_w', 'num_boxes']:
+                    data[key] = int(data[key])
+            
+                boxes = data['num_boxes']
+                decode_config = [
+                    ('objects_id', (boxes, ), np.int64),
+                    ('objects_conf', (boxes, ), np.float32),
+                    ('attrs_id', (boxes, ), np.int64),
+                    ('attrs_conf', (boxes, ), np.float32),
+                    ('boxes', (boxes, 4), np.float32),
+                    ('features', (boxes, -1), np.float32),
+                ]
+                for key, shape, dtype in decode_config:
+                    data[key] = np.frombuffer(base64.b64decode(data[key]), dtype=dtype)
+                    data[key] = data[key].reshape(shape)
+                    data[key].setflags(write=False)
+
+                feats = data["features"].copy()
+                obj_num = data["num_boxes"] 
+                boxes = data["boxes"].copy()  
+                objectsid = data["objects_id"]
+                objectsconfid = data["objects_conf"]    # Read image features
+                img_h, img_w = data['img_h'], data['img_w']
+
+        #img_info = self.imgid2img[img_id]
+        #obj_num = img_info['num_boxes']
+        #boxes = img_info['boxes'].copy()
+        #feats = img_info['features'].copy()
         assert len(boxes) == len(feats) == obj_num
 
         # Normalize the boxes (to 0 ~ 1)
-        img_h, img_w = img_info['img_h'], img_info['img_w']
+        
         boxes = boxes.copy()
         boxes[:, (0, 2)] /= img_w
         boxes[:, (1, 3)] /= img_h
@@ -109,8 +145,7 @@ class PlacesTorchDataset(Dataset):
             label = 0
         else:
             label = datum['label']
-        objectsid = img_info["objects_id"]
-        objectsconfid = img_info["objects_conf"]
+        
 
         return textInput, torch.tensor(feats), torch.tensor(boxes), torch.tensor(label), torch.tensor(objectsid), img_id
 

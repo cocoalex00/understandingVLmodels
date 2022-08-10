@@ -221,10 +221,10 @@ def main():
     # Load the dataset
     print("## Loading the dataset ##")
 
-    featuresTrain = load_obj_tsv(args.tsv_train)
-    featuresVal = load_obj_tsv(args.tsv_val)
-    trainDataset = Places365(args,"train",featuresTrain,tokenizer) 
-    valDataset =  Places365(args,"train",featuresVal,tokenizer) ######################### Change to val for HTCONDOR
+    # featuresTrain = load_obj_tsv(args.tsv_train)
+    # featuresVal = load_obj_tsv(args.tsv_val)
+    trainDataset = Places365(args,"train",args.tsv_train,tokenizer) 
+    valDataset =  Places365(args,"train",args.tsv_val,tokenizer) ######################### Change to val for HTCONDOR
 
     trainDL = DataLoader(
         dataset= trainDataset,

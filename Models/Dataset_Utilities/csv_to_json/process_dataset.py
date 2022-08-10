@@ -27,7 +27,7 @@ def _load_dataset(annotations_path,split="train"):
     count = 0
     rootpathtrain = "/vol/teaching/HernandezDiazProject/Data/Places365/trainshmol/data_256"
     rootpathval = "/vol/teaching/HernandezDiazProject/Data/Places365/val_256/"
-    rootpathtest = "/vol/teaching/HernandezDiazProject/Data/Places365/test_256/"
+    rootpathtest = "/vol/teaching/HernandezDiazProject/Data/Places365/test_256"
     newdata = []
     for index, data in tqdm(df.iterrows()):
 
@@ -43,8 +43,8 @@ def _load_dataset(annotations_path,split="train"):
         temp = {}
         temp["id"] = count
         temp["img_path"] = str(data[0])
-        if split != "test":
-            temp["label"] = int(data[1])
+        #if split != "test":
+        temp["label"] = int(data[1])
         temp["img_name"] = name.replace("/","-").split(".")[0]
 
         newdata.append(temp)

@@ -88,23 +88,23 @@ def load_obj_tsv(fname, topk=None):
 def _load_dataset(args, name):
     processor = processors[args.task_name]()
     if name == 'train':
-        examples = processor.get_train_examples(args.data_dir,  'train.json')
+        examples = processor.get_train_examples(args.data_dir,  'places365_train_alexsplit.json')
     elif name == 'val':
-        examples = processor.get_dev_examples(args.data_dir, 'val.json')
+        examples = processor.get_dev_examples(args.data_dir, 'places365_val.json')
     return examples
 
 class Places365(Dataset):
     """ Places365 Dataset """
 
-    def __init__(self, args, name, img_features, tokenizer):
+    def __init__(self, args, name, img_features_path, tokenizer):
         super(Places365, self).__init__()
         assert name in ['train', 'val']
 
         # Convert to dictionary 
-        self.img_featuresList = img_features
-        self.imgid2img = {}
-        for img_datum in self.img_featuresList:
-            self.imgid2img[img_datum['img_id']] = img_datum
+        self.img_features_path = img_features_path
+        # self.imgid2img = {}
+        # for img_datum in self.img_featuresList:
+        #     self.imgid2img[img_datum['img_id']] = img_datum
 
         #self.output_mode = output_modes[args.task_name]
         self.tokenizer = tokenizer
@@ -149,6 +149,31 @@ class Places365(Dataset):
         # image features
 
         img_key = example.img_key
+        pathname = self.tsvroot + img_key + ".tsv"
+        with open(pathname) as f:
+            for data in csv.DictReader(f, FIELDNAMES, delimiter="\t"):
+
+                for key in ['img_h', 'img_w', 'num_boxes']:
+                    data[key] = int(data[key])
+            
+                boxes = data['num_boxes']
+                decode_config = [
+                    ('objects_id', (boxes, ), np.int64),
+                    ('objects_conf', (boxes, ), np.float32),
+                    ('attrs_id', (boxes, ), np.int64),
+                    ('attrs_conf', (boxes, ), np.float32),
+                    ('boxes', (boxes, 4), np.float32),
+                    ('features', (boxes, -1), np.float32),
+                ]
+                for key, shape, dtype in decode_config:
+                    data[key] = np.frombuffer(base64.b64decode(data[key]), dtype=dtype)
+                    data[key] = data[key].reshape(shape)
+                    data[key].setflags(write=False)
+
+                img_feat = torch.tensor(data["features"], dtype = torch.long)
+                #num_boxes = data["num_boxes"] 
+                #boxes = data["boxes"]      # Read image features
+
         img_feat = torch.tensor(self.imgid2img[img_key]["features"], dtype= torch.long)
         if img_feat.shape[0] > 2*self.args.max_img_seq_length:
             img_feat = img_feat[0: 2*self.args.max_img_seq_length, ]

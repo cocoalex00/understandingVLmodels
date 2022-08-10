@@ -1,4 +1,6 @@
 *.pth
+*.txt
+*.json
 runs/
 pretrained/
 *.tsv

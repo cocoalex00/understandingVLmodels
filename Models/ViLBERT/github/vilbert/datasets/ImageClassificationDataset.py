@@ -132,7 +132,7 @@ def get_data_loader(annotations_jsonpath: str, TSV_path: str, batch_size: int = 
 
     #Create the feature reader and dataset
 
-    dataset = ImageClassificationDataset(annotations_jsonpath,TSV_path ,max_region_num,test)
+    dataset = ImageClassificationDataset(annotations_jsonpath, TSV_path, max_region_num,test)
 
     if multi_gpu:
         sampler = DistributedSampler(dataset=dataset)

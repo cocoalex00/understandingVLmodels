@@ -71,12 +71,12 @@ class Places(Dataset):
             else BertTokenizer.from_pretrained('bert-base-uncased')
 
         self.database = self.load_annotations(self.ann_file)
-        self.img_data = self.load_obj_tsv(self.tsv_path)
+        #self.img_data = self.load_obj_tsv(self.tsv_path)
 
         # transforming from list to dictionary for better accessing
-        self.imgid2img = {}
-        for img_datum in self.img_data:
-            self.imgid2img[img_datum['img_id']] = img_datum
+        # self.imgid2img = {}
+        # for img_datum in self.img_data:
+        #     self.imgid2img[img_datum['img_id']] = img_datum
 
 
         self.id2datum = {
@@ -140,13 +140,40 @@ class Places(Dataset):
         image_path = os.path.join(self.root_path, img_name)
         label1 = idb["label"]
 
+        pathname = self.tsv_path + idb["img_name"] + ".tsv"
+        #print(self.image_features)
+        # Read image features from tsv file                                                
+        with open(pathname) as f:
+            for data in csv.DictReader(f, FIELDNAMES, delimiter="\t"):
 
-        visual_features = deepcopy(self.imgid2img[idb["img_name"]])
-        w0,h0 = visual_features["img_w"], visual_features["img_h"]
+                for key in ['img_h', 'img_w', 'num_boxes']:
+                    data[key] = int(data[key])
+            
+                boxes = data['num_boxes']
+                decode_config = [
+                    ('objects_id', (boxes, ), np.int64),
+                    ('objects_conf', (boxes, ), np.float32),
+                    ('attrs_id', (boxes, ), np.int64),
+                    ('attrs_conf', (boxes, ), np.float32),
+                    ('boxes', (boxes, 4), np.float32),
+                    ('features', (boxes, -1), np.float32),
+                ]
+                for key, shape, dtype in decode_config:
+                    data[key] = np.frombuffer(base64.b64decode(data[key]), dtype=dtype)
+                    data[key] = data[key].reshape(shape)
+                    data[key].setflags(write=False)
 
-        boxes_features = torch.as_tensor(visual_features['features'], dtype=torch.float32).reshape((visual_features['num_boxes'], -1))
+                # features = data["features"]
+                # num_boxes = data["num_boxes"] 
+                # boxes = data["boxes"]      # Read image features
 
-        boxes = torch.as_tensor(visual_features['boxes'], dtype=torch.float32).reshape((visual_features['num_boxes'], -1))
+
+        #visual_features = deepcopy(self.imgid2img[idb["img_name"]])
+                w0,h0 = data["img_w"], data["img_h"]
+
+                boxes_features = torch.as_tensor(data['features'], dtype=torch.float32).reshape((data['num_boxes'], -1))
+
+                boxes = torch.as_tensor(data['boxes'], dtype=torch.float32).reshape((data['num_boxes'], -1))
 
         # Add full image as box
         image_box = torch.as_tensor([[0.0, 0.0, w0 - 1, h0 - 1]])
