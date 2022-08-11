@@ -96,25 +96,25 @@ def main():
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/train.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/train.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/valid_obj36.tsv",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--tsv_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/valid_obj36.tsv",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
     ####
@@ -158,7 +158,7 @@ def main():
     parser.add_argument(
         "--lr",
         type=int,
-        default=0.00002,
+        default=0.0002,
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -333,6 +333,8 @@ def main():
                 scaler.step(optimizer)              # Run an optimizer step
                 scaler.update()
 
+                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {warmupScheduler.get_last_lr()[0]}")
+
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
@@ -361,6 +363,7 @@ def main():
                     loss = criterion(outputs,labelsTensor)
                 # Add loss to list (val)
                 running_loss_val += loss.item()
+                print(f"Validation({epoch}) -> batch {i}, loss: {loss.item()}")
 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
@@ -371,6 +374,7 @@ def main():
             
             warmupScheduler.step()# update both lr schedulers 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
+            
 
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")

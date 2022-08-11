@@ -8,12 +8,12 @@ make: *** No rule to make target 'all'.  Stop.
 # This is free software: you are free to change and redistribute it.
 # There is NO WARRANTY, to the extent permitted by law.
 
-# Make data base, printed on Tue Aug  9 10:46:14 2022
+# Make data base, printed on Wed Aug 10 21:40:24 2022
 
 # Variables
 
 # environment
-TMUX_PANE = %2
+TMUX_PANE = %11
 # environment
 LC_ALL = C
 # environment
@@ -75,7 +75,7 @@ CONDA_SHLVL = 0
 # automatic
 @F = $(notdir $@)
 # environment
-TMUX = /tmp/tmux-1000/default,30,0
+TMUX = /tmp/tmux-1000/default,30,1
 # automatic
 ?D = $(patsubst %/,%,$(dir $?))
 # environment
@@ -103,7 +103,7 @@ MAKELEVEL := 0
 # default
 MAKE = $(MAKE_COMMAND)
 # environment
-PATH = /home/cocoalex/.vscode-server/bin/da76f93349a72022ca4670c1b84860304616aaa2/bin/remote-cli:/home/cocoalex/anaconda3/condabin:/usr/local/cuda-11.3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/bin:/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/libnvvp:/mnt/c/Python39/Scripts:/mnt/c/Python39:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0:/mnt/c/Windows/System32/OpenSSH:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/NVIDIA Corporation/NVIDIA NvDLISR:/mnt/c/lua:/mnt/c/curl/bin:/mnt/c/ProgramData/chocolatey/bin:/mnt/c/Python27:/mnt/c/Python27/Scripts:/mnt/c/Program Files/NVIDIA Corporation/Nsight Compute 2019.4.0:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0:/mnt/c/WINDOWS/System32/OpenSSH:/mnt/c/Program Files/MATLAB/R2021a/bin:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/ProgramData/DockerDesktop/version-bin:/mnt/c/Users/aleja/AppData/Local/Microsoft/WindowsApps:/mnt/c/tools/neovim/Neovim/bin:/mnt/c/Users/aleja/AppData/Local/Programs/MiKTeX/miktex/bin/x64:/mnt/c/Users/aleja/AppData/Local/Programs/Microsoft VS Code/bin:/mnt/c/Users/aleja/AppData/Local/GitHubDesktop/bin:/snap/bin
+PATH = /home/cocoalex/.vscode-server/bin/6d9b74a70ca9c7733b29f0456fd8195364076dda/bin/remote-cli:/home/cocoalex/anaconda3/condabin:/usr/local/cuda-11.3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/bin:/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/libnvvp:/mnt/c/Python39/Scripts:/mnt/c/Python39:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0:/mnt/c/Windows/System32/OpenSSH:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/NVIDIA Corporation/NVIDIA NvDLISR:/mnt/c/lua:/mnt/c/curl/bin:/mnt/c/ProgramData/chocolatey/bin:/mnt/c/Python27:/mnt/c/Python27/Scripts:/mnt/c/Program Files/NVIDIA Corporation/Nsight Compute 2019.4.0:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0:/mnt/c/WINDOWS/System32/OpenSSH:/mnt/c/Program Files/MATLAB/R2021a/bin:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/ProgramData/DockerDesktop/version-bin:/mnt/c/Users/aleja/AppData/Local/Microsoft/WindowsApps:/mnt/c/tools/neovim/Neovim/bin:/mnt/c/Users/aleja/AppData/Local/Programs/MiKTeX/miktex/bin/x64:/mnt/c/Users/aleja/AppData/Local/Programs/Microsoft VS Code/bin:/mnt/c/Users/aleja/AppData/Local/GitHubDesktop/bin:/snap/bin
 # default
 MAKEFILES := 
 # automatic
@@ -155,7 +155,7 @@ _CE_M =
 # environment
 LC_CTYPE = en_US.UTF-8
 # environment
-VSCODE_IPC_HOOK_CLI = /mnt/wslg/runtime-dir/vscode-ipc-9ffcc6c6-fc74-4ed6-b529-cbb43d7e2942.sock
+VSCODE_IPC_HOOK_CLI = /mnt/wslg/runtime-dir/vscode-ipc-ac911119-009e-4f94-b5c6-a3e40402bb55.sock
 # environment
 VSCODE_AMD_ENTRYPOINT = vs/workbench/api/node/extensionHostProcess
 # environment
@@ -247,6 +247,6 @@ GNUmakefile:
 # strcache performance: lookups = 22 / hit rate = 13%
 # hash-table stats:
 # Load=19/8192=0%, Rehash=0, Collisions=0/22=0%
-# Finished Make data base on Tue Aug  9 10:46:14 2022
+# Finished Make data base on Wed Aug 10 21:40:24 2022
 
  

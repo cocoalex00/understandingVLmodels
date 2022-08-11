@@ -149,7 +149,8 @@ class Places365(Dataset):
         # image features
 
         img_key = example.img_key
-        pathname = self.tsvroot + img_key + ".tsv"
+        #print(img_key)
+        pathname = self.img_features_path + img_key + ".tsv"
         with open(pathname) as f:
             for data in csv.DictReader(f, FIELDNAMES, delimiter="\t"):
 
@@ -174,7 +175,7 @@ class Places365(Dataset):
                 #num_boxes = data["num_boxes"] 
                 #boxes = data["boxes"]      # Read image features
 
-        img_feat = torch.tensor(self.imgid2img[img_key]["features"], dtype= torch.long)
+        #img_feat = torch.tensor(self.imgid2img[img_key]["features"], dtype= torch.long)
         if img_feat.shape[0] > 2*self.args.max_img_seq_length:
             img_feat = img_feat[0: 2*self.args.max_img_seq_length, ]
             if self.args.max_img_seq_length > 0:

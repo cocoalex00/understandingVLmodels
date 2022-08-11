@@ -87,7 +87,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     # ARGUMENTS NEEDED FOR THE MODEL
-    parser.add_argument("--data_dir", default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities", type=str,
+    parser.add_argument("--data_dir", default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/", type=str,
                         help="The input data dir. Should contain the .json files for the task.")
     parser.add_argument("--model_type", default="bert", type=str,
                         help="Model type selected in the list: ")
@@ -117,13 +117,13 @@ def main():
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/valid_obj36.tsv",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--tsv_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/valid_obj36.tsv",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
     parser.add_argument(
@@ -223,8 +223,8 @@ def main():
 
     # featuresTrain = load_obj_tsv(args.tsv_train)
     # featuresVal = load_obj_tsv(args.tsv_val)
-    trainDataset = Places365(args,"train",args.tsv_train,tokenizer) 
-    valDataset =  Places365(args,"train",args.tsv_val,tokenizer) ######################### Change to val for HTCONDOR
+    trainDataset = Places365(args,"val",args.tsv_train,tokenizer) 
+    valDataset =  Places365(args,"val",args.tsv_val,tokenizer) ######################### Change to val for HTCONDOR
 
     trainDL = DataLoader(
         dataset= trainDataset,
@@ -352,6 +352,7 @@ def main():
                     loss = criterion(output[0],labels)
                 # Add loss to list
                 running_loss_train += loss.item()
+                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {warmupScheduler.get_last_lr()[0]}")
 
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
@@ -385,6 +386,7 @@ def main():
                     loss = criterion(output[0],labels)
                 # Add loss to list (val)
                 running_loss_val += loss.item()
+                print(f"Validation({epoch}) -> batch {i}, loss: {loss.item()}")
 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
@@ -398,7 +400,8 @@ def main():
 
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
-    except:
+    except Exception as e:
+        print(repr(e))
         # when sigterm caught, save checkpoint and exit
         
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel

@@ -9,6 +9,7 @@ import torch
 
 from .param import args
 from .utils import load_obj_tsv
+import base64
 import csv
 import sys 
 csv.field_size_limit(sys.maxsize)
@@ -95,9 +96,9 @@ class PlacesTorchDataset(Dataset):
 
         img_id = datum['img_name']
         textInput = " "
-
+        print("sape")
          # Get image info
-        pathname = self.raw_dataset.imgfeatpath + db_id + ".tsv"
+        pathname = self.raw_dataset.imgfeatpath + img_id + ".tsv"
 
         with open(pathname) as f:
             for data in csv.DictReader(f, FIELDNAMES, delimiter="\t"):

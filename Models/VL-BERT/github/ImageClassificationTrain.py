@@ -98,25 +98,25 @@ def main():
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/train.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/train.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/valid_obj36.tsv",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--tsv_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/valid_obj36.tsv",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
     ####
@@ -348,11 +348,13 @@ def main():
                     loss = criterion(outputs[1],label)
                 # Add loss to list
                 running_loss_train += loss.item()
-
+                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {warmupScheduler.get_last_lr()[0]}")
+                
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
                 scaler.step(optimizer)              # Run an optimizer step
                 scaler.update()
+
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
@@ -384,6 +386,8 @@ def main():
                     loss = criterion(outputs[1],label)
                 # Add loss to list (val)
                 running_loss_val += loss.item()
+
+                print(f"Validation({epoch}) -> batch {i}, loss: {loss.item()}")
 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)

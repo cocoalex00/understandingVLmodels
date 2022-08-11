@@ -28,20 +28,20 @@ def make_arrow(root, dataset_root,split):
 
     if split == "train":
         train_data = list(
-            map(json.loads, open(f"{root}/train.jsonline").readlines())
+            map(json.loads, open(f"{root}/places365_train_alexsplit.json").readlines())
         )
         val_data = None
         test_data = None
 
     elif split =="val":
         val_data = list(
-            map(json.loads, open(f"{root}/val.jsonline").readlines())
+            map(json.loads, open(f"{root}/places365_val.json").readlines())
         )
 
         test_data = None
         train_data = None
     elif split == "test":
-        test_data = list(map(json.loads, open(f"{root}/test.jsonline").readlines()))
+        test_data = list(map(json.loads, open(f"{root}/places365_test.json").readlines()))
 
         train_data = None
         val_data = None
