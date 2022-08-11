@@ -5,7 +5,7 @@ import os
 
 from tqdm import tqdm
 from collections import defaultdict
-
+import argparse
 
 def process(root, iden, row):
     #texts = ["[CLS]]"for r in row]
@@ -81,6 +81,22 @@ def make_arrow(root, dataset_root,split):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
 
-    make_arrow("/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/","/mnt/c/Users/aleja/Desktop/MSc Project/images","val")
+    parser.add_argument(
+        "--dataset_root",
+        type=str,
+    )
+    parser.add_argument(
+        "--root",
+        type=str,
+    )
+
+    parser.add_argument(
+        "--split",
+        type=str,
+    )
+    
+    args = parser.parse_args()
+    make_arrow(args.root, args.dataset_root,args.split)
    
