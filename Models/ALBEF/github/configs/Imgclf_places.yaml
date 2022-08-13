@@ -9,7 +9,7 @@ batch_size_train: 32
 batch_size_test: 64 
 
 alpha: 0.4
-distill: True
+distill: False
 warm_up: False
 
 bert_config: '/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/config_bert.json'

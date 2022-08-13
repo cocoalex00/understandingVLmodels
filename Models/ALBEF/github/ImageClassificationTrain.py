@@ -5,6 +5,9 @@
 # imports 
 import matplotlib.pyplot as plt
 import torch
+import matplotlib
+matplotlib.use("pdf")
+import traceback 
 
 import csv
 import signal
@@ -60,6 +63,8 @@ def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_che
         'current_epoch': current_epoch
     }
     # Save to checkpoint file, use different name for final checkpoint #
+    if not os.path.exists(folder_path + "/"):
+        os.makedirs(folder_path+"/")
     if final:
         torch.save(obj=checkpoint, f=f"{folder_path}/ALBEFFineTuned.pth")
     else:
@@ -90,7 +95,7 @@ def main():
     parser.add_argument(
         "--pretrained",
         type=str,
-        default="Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
         help="Path to the pth file that contains the model's checkpoint"
     )
     parser.add_argument(
@@ -102,25 +107,25 @@ def main():
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/train.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest/train.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--root_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256",
         help="Path to the images of the dataset (train)"
     )
     parser.add_argument(
         "--root_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/totest",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256",
         help="Path to the images of the dataset (validation)"
     )
     parser.add_argument(
@@ -144,13 +149,13 @@ def main():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=16,
+        default=2,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=1000,
+        default=30,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -163,7 +168,7 @@ def main():
     parser.add_argument(
         "--lr",
         type=int,
-        default=0.00002,
+        default=3e-3,
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -245,9 +250,12 @@ def main():
 
     del ckpt
     #model.load_state_dict()
-    # Only train the last classifier
-    model.visual_encoder.requires_grad_(False)
-    model.text_encoder.requires_grad_(False)
+
+    # Only train the last classifiers
+    for name, param in model.named_parameters():
+        print(name)
+        if "cls_head" not in name:
+            param.requires_grad_(False)
 
     
 
@@ -272,10 +280,11 @@ def main():
     reducelrScheduler = ReduceLROnPlateau(
             optimizer, mode="max", factor=0.2, patience=1, cooldown=1, threshold=0.001
         )
-    warmupSteps = int(args.num_epochs * args.warmup_proportion)                         # Calculate the number of epochs to warm up for
+    totalSteps = len(trainDL) * args.num_epochs
+    warmupSteps = int(totalSteps * args.warmup_proportion)                            # Calculate the number of epochs to warm up for
     warmupScheduler = get_linear_schedule_with_warmup(optimizer= optimizer,
                                                     num_warmup_steps= warmupSteps,
-                                                    num_training_steps = args.num_epochs
+                                                    num_training_steps = totalSteps
                                                     )
     
 
@@ -299,9 +308,9 @@ def main():
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if isinstance(model, nn.DataParallel):
-            model.module.load_state_dict(checkpoint['model_checkpoint'])
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
-            model.load_state_dict(checkpoint['model_checkpoint'])
+            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
         warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
         reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
@@ -353,13 +362,31 @@ def main():
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
                 scaler.step(optimizer)              # Run an optimizer step
+                scale = scaler.get_scale()
                 scaler.update()
+
+                skip_lr_schedule = (scale > scaler.get_scale()) 
+                            # # Append learning rate to list 
+                learningRate.append(optimizer.param_groups[0]['lr'])
+                
+                if not skip_lr_schedule:
+                   warmupScheduler.step() # update both lr schedulers 
+                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
+
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
+
+            print(f"epoch loss: {epochLoss}")
             trainingLoss.append(epochLoss)
 
-
+            
+            # Save frequent checkpoints
+            if isinstance(model,nn.DataParallel):
+                model_checkpoint = model.module.state_dict()
+            else:
+                model_checkpoint = model.state_dict()
+            save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
 
             ########################################### Validation  #####################################################
 
@@ -387,15 +414,12 @@ def main():
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
 
-            # Append learning rate to list 
-            learningRate.append(warmupScheduler.get_last_lr()[0])
-            
-            warmupScheduler.step()# update both lr schedulers 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
-    except:
+    except :
+        traceback.print_exc()
         # when sigterm caught, save checkpoint and exit
         
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
@@ -407,12 +431,13 @@ def main():
         sys.exit(0)
 
     print("--- Training Complete, Saving checkpoint ---")
+    sys.exit(0)
     ####### Save completed checkpoint to the out folder ######
     if isinstance(model,nn.DataParallel):
         model_checkpoint = model.module.state_dict()
     else:
         model_checkpoint = model.state_dict()
-    save_checkpoint(args.out,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
+    save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
     
     
     ####### Create plots and save them ######
