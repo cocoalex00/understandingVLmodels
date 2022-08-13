@@ -19,6 +19,12 @@ import random
 from tqdm import tqdm
 import argparse
 import yaml
+import utils
+from dataset import create_sampler,create_loader
+import torch.distributed as dist
+from torch.utils.data.distributed import DistributedSampler
+
+from distribuido import setup_for_distributed, save_on_master, is_main_process
 
 
 
@@ -36,6 +42,31 @@ try:
     APEX_AVAILABLE = True
 except ModuleNotFoundError:
     APEX_AVAILABLE = False
+
+gpu_list = "0,1,2,3"
+os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+
+def init_distributed():
+
+    # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
+    dist_url = "env://" # default
+
+    # only works with torch.distributed.launch // torch.run
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ['WORLD_SIZE'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    dist.init_process_group(
+            backend="nccl",
+            init_method=dist_url,
+            world_size=world_size,
+            rank=rank)
+
+    # this will make all .cuda() calls work properly
+    torch.cuda.set_device(local_rank)
+
+    # synchronizes all the threads to reach this point before moving on
+    dist.barrier()
+    setup_for_distributed(rank==0)
 
 
 
@@ -84,8 +115,11 @@ def sigterm_handler(signal,frame):
 
 
 
+
+
 #### Main Script ###
 def main():
+    init_distributed()
     # initialise the sigterm handler
     signal.signal(signal.SIGTERM, sigterm_handler)
 
@@ -197,45 +231,69 @@ def main():
 
 
     # CUDA check 
-    device = torch.device(f"cuda:{torch.cuda.current_device()}" if torch.cuda.is_available() else "cpu") 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
     n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
 
-
-    print("the device being used is: " + str(device))
-    print("number of gpus available: " + str(n_gpu))
-    print(f"Using mixed precision training: {APEX_AVAILABLE}")
+    if is_main_process:
+        print("the device being used is: " + str(device))
+        print("number of gpus available: " + str(n_gpu))
+        print(f"Using mixed precision training: {APEX_AVAILABLE}")
 
     if n_gpu > 1: 
         args.batch_size = args.batch_size * n_gpu   # Augment batch size if more than one gpu is available
 
     
     # Load the dataset
-    print("## Loading the dataset ##")
+    if is_main_process:
+        print("## Loading the dataset ##")
 
     trainDataset = places365(args.annotTrain, args.root_train)
     valDataset = places365(args.annotVal, args.root_val)
 
-    trainDL = DataLoader(
-        dataset= trainDataset,
-        batch_size= args.batch_size,
-        shuffle= True,
-        pin_memory=True
-    )
-    valDL = DataLoader(
-        dataset= valDataset,
-        batch_size= args.batch_size,
-        shuffle= True,
-        pin_memory=True
-    )
+    if n_gpu > 1:
+
+        trainsampler = DistributedSampler(dataset=trainDataset, shuffle=True)   
+        valsampler = DistributedSampler(dataset=valDataset, shuffle=True)   
+        trainDL = DataLoader(
+            dataset= trainDataset,
+            batch_size= args.batch_size,
+            #shuffle= True,
+            pin_memory=True,
+            sampler=trainsampler
+        )
+        valDL = DataLoader(
+            dataset= valDataset,
+            batch_size= args.batch_size,
+            #shuffle= True,
+            pin_memory=True,
+            sampler= valsampler
+        )
 
 
+    else:
 
-    print("## Dataset loaded succesfully ##")
+        trainDL = DataLoader(
+            dataset= trainDataset,
+            batch_size= args.batch_size,
+            shuffle= True,
+            pin_memory=True
+        )
+        valDL = DataLoader(
+            dataset= valDataset,
+            batch_size= args.batch_size,
+            shuffle= True,
+            pin_memory=True
+        )
+
+
+    if is_main_process:
+        print("## Dataset loaded succesfully ##")
 
 
     ##### MODEL STUFF #####
     # Load the Model
-    print("## Loading the Model ##")
+    if is_main_process:
+        print("## Loading the Model ##")
 
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased") 
 
@@ -258,15 +316,19 @@ def main():
             param.requires_grad_(False)
 
     
-
-    print("## Model Loaded ##")
+    if is_main_process:
+        print("## Model Loaded ##")
 
     # Data paralellization in multiple gpus if more than one is available (only in one node, multiple is too hard f***)
     if n_gpu > 1:
-        device = torch.device("cuda")
-        model = nn.DataParallel(model)
-        model.to(device)
-        print("Data parallelization activated")
+        # device = torch.device("cuda")
+        # model = nn.DataParallel(model)
+        # model.to(device)
+        model =  nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        local_rank = int(os.environ["LOCAL_RANK"])
+        model = nn.parallel.DistributedDataParallel(model,decide_ids = [local_rank])
+        if is_main_process:
+            print("Data parallelization activated")
     else:
         model.to(device)
 
@@ -299,7 +361,8 @@ def main():
 
     # Check for available checkpoints 
     if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth")):
-        print(f"Checkpoint found, loading")
+        if is_main_process:
+            print(f"Checkpoint found, loading")
         checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth"))
         start_epoch = checkpoint['current_epoch']
         learningRate = checkpoint['lr']
@@ -315,10 +378,11 @@ def main():
         warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
         reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
 
-
-        print("Checkpoint loaded")
+        if is_main_process:
+            print("Checkpoint loaded")
     else:
-        print("No checkpoint found, starting fine tunning from base pre-trained model")
+        if is_main_process:
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
 
 
 
@@ -328,6 +392,7 @@ def main():
 
     # Training loop ####################################################################################################################################
 
+    
     print("***** Running training *****")
     print(f"  Num epochs left: {args.num_epochs - start_epoch}/{ args.num_epochs}")
     print("  Batch size: ", args.batch_size)
@@ -382,11 +447,13 @@ def main():
 
             
             # Save frequent checkpoints
-            if isinstance(model,nn.DataParallel):
-                model_checkpoint = model.module.state_dict()
-            else:
-                model_checkpoint = model.state_dict()
-            save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
+
+            if is_main_process:
+                if isinstance(model,nn.DataParallel):
+                    model_checkpoint = model.module.state_dict()
+                else:
+                    model_checkpoint = model.state_dict()
+                save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
 
             ########################################### Validation  #####################################################
 
@@ -422,23 +489,25 @@ def main():
         traceback.print_exc()
         # when sigterm caught, save checkpoint and exit
         
-        # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
-        if isinstance(model,nn.DataParallel):
-            model_checkpoint = model.module.state_dict()
-        else:
-            model_checkpoint = model.state_dict()
-        save_checkpoint(args.checkpoint_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
+        if is_main_process:
+            # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
+            if isinstance(model,nn.DataParallel):
+                model_checkpoint = model.module.state_dict()
+            else:
+                model_checkpoint = model.state_dict()
+            save_checkpoint(args.checkpoint_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
         sys.exit(0)
 
     print("--- Training Complete, Saving checkpoint ---")
     sys.exit(0)
     ####### Save completed checkpoint to the out folder ######
-    if isinstance(model,nn.DataParallel):
-        model_checkpoint = model.module.state_dict()
-    else:
-        model_checkpoint = model.state_dict()
-    save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
-    
+    if is_main_process:
+        if isinstance(model,nn.DataParallel):
+            model_checkpoint = model.module.state_dict()
+        else:
+            model_checkpoint = model.state_dict()
+        save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
+        
     
     ####### Create plots and save them ######
     plt.style.use(['seaborn']) # change style (looks cooler!)
@@ -448,7 +517,8 @@ def main():
     plt.xlabel("Epochs")
     plt.ylabel("Learning Rate")
     plt.legend()
-    plt.savefig(f"{args.output_dir}/learningRate.png")
+    if is_main_process:
+        plt.savefig(f"{args.output_dir}/learningRate.png")
 
     # Combined loss 
     plt.figure(2)
@@ -457,7 +527,8 @@ def main():
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig(f"{args.output_dir}/CombinedLoss.png")
+    if is_main_process:
+        plt.savefig(f"{args.output_dir}/CombinedLoss.png")
 
     # Train loss 
     plt.figure(3)
@@ -465,7 +536,8 @@ def main():
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig(f"{args.output_dir}/TrainLoss.png")
+    if is_main_process:
+        plt.savefig(f"{args.output_dir}/TrainLoss.png")
 
     # Val loss 
     plt.figure(4)
@@ -473,20 +545,22 @@ def main():
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
     plt.legend()
-    plt.savefig(f"{args.output_dir}/ValLoss.png")
+    if is_main_process:
+        plt.savefig(f"{args.output_dir}/ValLoss.png")
 
-    # Also save the lists and stats in a csv to create other plots if needed 
-    with open(f"{args.output_dir}/ALBEFlists.csv", "w") as f:
-        write = csv.writer(f)
-        write.writerow(["Learning rate over the epochs:"])
-        write.writerow(learningRate)
-        write.writerow(["Training loss over the epochs:"])
-        write.writerow(trainingLoss)
-        write.writerow(["Validation loss over the epochs:"])
-        write.writerow(valLoss)
-        write.writerow(["--- stats ---"])
-        write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
-        write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
+    # Also save the lists and stats in a csv to create other plots if needed
+    if is_main_process: 
+        with open(f"{args.output_dir}/ALBEFlists.csv", "w") as f:
+            write = csv.writer(f)
+            write.writerow(["Learning rate over the epochs:"])
+            write.writerow(learningRate)
+            write.writerow(["Training loss over the epochs:"])
+            write.writerow(trainingLoss)
+            write.writerow(["Validation loss over the epochs:"])
+            write.writerow(valLoss)
+            write.writerow(["--- stats ---"])
+            write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
+            write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
         
 if __name__=="__main__":
     main()
