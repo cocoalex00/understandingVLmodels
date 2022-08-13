@@ -1706,7 +1706,8 @@ class VILBertForVLTasks(BertPreTrainedModel):
             linguisic_logit,
             all_attention_mask,
             sequence_output_v,
-            pooled_output_v ## added by Alejandro Hernandez Díaz
+            pooled_output_v,
+            pooled_output ## added by Alejandro Hernandez Díaz
         )
 
 

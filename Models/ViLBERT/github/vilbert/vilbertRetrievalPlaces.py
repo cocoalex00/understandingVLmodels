@@ -12,9 +12,9 @@ from .vilbert import VILBertForVLTasks, BertConfig, BertLayerNorm , GeLU
 ## VILBert for Image Classification, adapted from its original implementation
 ##  - Link: https://github.com/facebookresearch/vilbert-multi-task
 
-class VILBertForImageClassification(torch.nn.Module):
+class VILBertForRetrieval(torch.nn.Module):
 
-    def __init__(self,config_file, num_labels, from_pretrained, default_gpu=True):
+    def __init__(self,config_file,from_pretrained, default_gpu=True):
         """ Vilbert Model adapted to perform image classification.
 
             config_file: path to the json file containing BERT's configuration
@@ -22,14 +22,14 @@ class VILBertForImageClassification(torch.nn.Module):
             from_pretrained: path to the .bin file containing the pre-trained weights
             default_gpu: 
         """
-        super(VILBertForImageClassification,self).__init__()
+        super(VILBertForRetrieval,self).__init__()
         # Bert configuration
         self.config = BertConfig.from_json_file(config_file)
         #ViLBERT model
         self.vilbertBase = VILBertForVLTasks.from_pretrained(
             from_pretrained,
             config=self.config,
-            num_labels=num_labels,
+            num_labels=1,
             default_gpu=default_gpu,
         )
 
@@ -38,7 +38,7 @@ class VILBertForImageClassification(torch.nn.Module):
             nn.Linear(self.config.bi_hidden_size, self.config.bi_hidden_size * 2),
             GeLU(),
             BertLayerNorm(self.config.bi_hidden_size * 2 , eps=1e-12),
-            nn.Linear(self.config.bi_hidden_size * 2 , num_labels),
+            nn.Linear(self.config.bi_hidden_size * 2 , 1),
         )
 
 
@@ -62,12 +62,13 @@ class VILBertForImageClassification(torch.nn.Module):
         )
 
         # get image logits (use visual pooled output which is an overall represerntation of the image features)
-        imageLogits = self.ImageClassifFC(pooled_output_v)
-
+        #print(pooled_output)
+        alignment_logits= self.ImageClassifFC(pooled_output)
+        
        # print(pooled_output_v.shape)
 
         return (
-            imageLogits,
+            alignment_logits,
             vil_prediction,
             vil_prediction_gqa,
             vil_logit,

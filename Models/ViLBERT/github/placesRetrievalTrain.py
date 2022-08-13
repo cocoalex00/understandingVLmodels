@@ -3,6 +3,7 @@
 # This source code implements the training script to fine-tune the adapted ViLBERT model to image classification.
 
 # imports 
+from typing import Iterable
 import matplotlib
 matplotlib.use("pdf")
 import matplotlib.pyplot as plt
@@ -18,12 +19,11 @@ import random
 from tqdm import tqdm
 import argparse
 
+from vilbert.vilbertRetrievalPlaces import VILBertForRetrieval
+from vilbert.datasets.ITretrievalDataset import get_data_loader 
 
-from oscar.run_imageclassif import Places365, load_obj_tsv
-from torch.utils.data import DataLoader
+
 from transformers import  get_linear_schedule_with_warmup
-from pytorch_transformers import BertConfig, BertTokenizer
-from oscar.modeling.modeling_bert import OscarForImageClassification
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     ReduceLROnPlateau
@@ -63,10 +63,11 @@ def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_che
     # Save to checkpoint file, use different name for final checkpoint #
     if not os.path.exists(folder_path + "/"):
         os.makedirs(folder_path+"/")
+    # Save to checkpoint file, use different name for final checkpoint #
     if final:
-        torch.save(obj=checkpoint, f=f"{folder_path}/OscarFineTuned.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/VilbertFineTuned.pth")
     else:
-        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointOscar.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointVilbert.pth")
     print("--Checkpoint saved--")
 
 
@@ -90,34 +91,39 @@ def main():
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
 
-    # ARGUMENTS NEEDED FOR THE MODEL
-    parser.add_argument("--data_dir", default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/", type=str,
-                        help="The input data dir. Should contain the .json files for the task.")
-    parser.add_argument("--model_type", default="bert", type=str,
-                        help="Model type selected in the list: ")
-    parser.add_argument("--model_name_or_path", default="pretrained/base-vg-labels/ep_107_1192087", type=str,
-                        help="Path to pre-trained model or shortcut name selected in the list: ")
-    parser.add_argument("--task_name", default="places", type=str, 
-                        help="The name of the task to train selected in the list: ")
-
-    parser.add_argument("--data_label_type", default='bal', type=str, help="bal or all")
-    parser.add_argument("--drop_out", default=0.1, type=float, help="Drop out for BERT.")
-    parser.add_argument("--train_data_type", default='bal', type=str, help="bal or all")
-    parser.add_argument("--eval_data_type", default='bal', type=str, help="bal or all")
-    parser.add_argument("--loss_type", default='kl', type=str, help="kl or xe")
-    parser.add_argument("--use_layernorm", action='store_true', help="use_layernorm")
-    parser.add_argument("--use_label_seq", action='store_true', help="use_label_seq")
-    parser.add_argument("--use_pair", action='store_true', help="use_pair")
-    parser.add_argument("--num_choice", default=2, type=int, help="num_choice")
-    parser.add_argument("--max_seq_length", default=2, type=int, help="max lenght of text sequence")
-    parser.add_argument("--max_img_seq_length", default=30, type=int, help="The maximum total input image sequence length.")
-    parser.add_argument("--img_feature_dim", default=2048, type=int)
-    parser.add_argument("--code_voc", default=512, type=int)
-    parser.add_argument("--img_feature_type", default="faster_r-cnn", type=str)
-    parser.add_argument("--classifier", default="mlp", type=str)
-    parser.add_argument("--cls_hidden_scale", default=2, type=int)
-
-    ####
+    parser.add_argument(
+        "--bert_model",
+        default="bert-base-uncased",
+        type=str,
+        help="Bert pre-trained model selected in the list: bert-base-uncased, "
+        "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.",
+    )
+    parser.add_argument(
+        "--from_pretrained",
+        default="bert-base-uncased",
+        type=str,
+        help="Bert pre-trained model selected in the list: bert-base-uncased, "
+        "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.",
+    )
+    parser.add_argument(    
+        "--config_file",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLBERT/github/config/bert_base_6layer_6conect.json",
+        type=str,
+        help="The config file which specified the model details.",
+    )
+    #### Annotations and TSV files 
+    parser.add_argument(
+        "--annotTrain",
+        type=str,
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        help="Path to the jsonline file containing the annotations of the dataset"
+    )
+    parser.add_argument(
+        "--annotVal",
+        type=str,
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        help="Path to the json file containing the annotations of the dataset (validation)"
+    )
     parser.add_argument(
         "--tsv_train",
         type=str,
@@ -130,21 +136,22 @@ def main():
         default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
+    ####
     parser.add_argument(
         "--num_labels",
-        default=365,
+        default=1,
         type=int,
         help="Number of classes in the dataset",
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/Oscar/imgClf/out",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLBERT/ret/out",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/Oscar/imgClf/checkpoints",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLBERT/ret/checkpoints",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
@@ -157,7 +164,7 @@ def main():
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=2,
+        default=30,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -171,7 +178,7 @@ def main():
         "--lr",
         type=int,
         default=3e-4,
-        help="The base learning rate to be used with the optimizer (default =0.00002)"
+        help="The base learning rate to be used with the optimizer (default =3e-4)"
     )
     parser.add_argument(
         "--seed",
@@ -179,25 +186,16 @@ def main():
         default=0,
         help="random seed for initialisation in multiple GPUs"
     )
+    parser.add_argument(
+        "--labels_path",
+        type=str,
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
+        help="random seed for initialisation in multiple GPUs"
+    )
 
     # Get all arguments 
     args = parser.parse_args()
 
-
-    # The oscar dataset needs for the features to be loaded and the tokenizer to be initialised
-    config = BertConfig.from_pretrained("bert-base-uncased", num_labels=args.num_labels, finetuning_task=args.task_name)
-
-    config.img_feature_dim = args.img_feature_dim
-    config.img_feature_type = args.img_feature_type
-    config.code_voc = args.code_voc
-    config.hidden_dropout_prob = args.drop_out
-    config.loss_type = args.loss_type
-    config.use_layernorm = args.use_layernorm
-    config.classifier = args.classifier
-    config.cls_hidden_scale = args.cls_hidden_scale
-    config.num_choice = args.num_choice
-
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
 
 
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
@@ -225,24 +223,8 @@ def main():
     # Load the dataset
     print("## Loading the dataset ##")
 
-    # featuresTrain = load_obj_tsv(args.tsv_train)
-    # featuresVal = load_obj_tsv(args.tsv_val)
-    trainDataset = Places365(args,"val",args.tsv_train,tokenizer) 
-    valDataset =  Places365(args,"val",args.tsv_val,tokenizer) ######################### Change to val for HTCONDOR
-
-    trainDL = DataLoader(
-        dataset= trainDataset,
-        batch_size= args.batch_size,
-        shuffle= True,
-        pin_memory=True
-    )
-    valDL = DataLoader(
-        dataset= valDataset,
-        batch_size= args.batch_size,
-        shuffle= True,
-        pin_memory=True
-    )
-
+    trainDL = get_data_loader(args.annotTrain, args.labels_path,  args.tsv_train,  args.batch_size)
+    valDL = get_data_loader(args.annotVal, args.labels_path, args.tsv_val, args.batch_size)
 
 
     print("## Dataset loaded succesfully ##")
@@ -252,9 +234,9 @@ def main():
     # Load the Model
     print("## Loading the Model ##")
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = OscarForImageClassification(config)
+    model = VILBertForRetrieval(args.config_file, args.from_pretrained)
     # Only train the last classifier
-    model.bert.requires_grad_(False)
+    model.vilbertBase.requires_grad_(False)
 
     
 
@@ -270,7 +252,7 @@ def main():
         model.to(device)
 
     # Loss fnc and optimizer
-    criterion = CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = AdamW(model.parameters(), args.lr)
     # Create gradient scaler for f16 precision
     scaler = amp.GradScaler()
@@ -280,7 +262,7 @@ def main():
             optimizer, mode="max", factor=0.2, patience=1, cooldown=1, threshold=0.001
         )
     totalSteps = len(trainDL) * args.num_epochs
-    warmupSteps = int(totalSteps * args.warmup_proportion)                            # Calculate the number of epochs to warm up for
+    warmupSteps = int(totalSteps * args.warmup_proportion)                         # Calculate the number of epochs to warm up for
     warmupScheduler = get_linear_schedule_with_warmup(optimizer= optimizer,
                                                     num_warmup_steps= warmupSteps,
                                                     num_training_steps = totalSteps
@@ -297,9 +279,9 @@ def main():
 
 
     # Check for available checkpoints 
-    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointOscar.pth")):
+    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointVilbert.pth")):
         print(f"Checkpoint found, loading")
-        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointOscar.pth"))
+        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointVilbert.pth"))
         start_epoch = checkpoint['current_epoch']
         learningRate = checkpoint['lr']
         trainingLoss = checkpoint['Tloss']
@@ -318,8 +300,6 @@ def main():
         print("Checkpoint loaded")
     else:
         print("No checkpoint found, starting fine tunning from base pre-trained model")
-
-
 
 
     # Progress bars
@@ -345,25 +325,26 @@ def main():
 
                 # Data related stuff
                 batch = [t.cuda(device=device, non_blocking=True) for t in batch]
-                input_ids, attention_mask, segment_ids, labels, img_feats= batch
-
-
+                textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, labels = batch
+                #labels = torch.argmax(target,1)
+                labels = torch.tensor([t.type(torch.float32)for t in labels], device=device)
 
                 ### Forward pass ###
                 with amp.autocast(): # Cast from f32 to f16 
-                    output = model(input_ids = input_ids,attention_mask=  attention_mask, position_ids = segment_ids, img_feats= img_feats)
-
+                    outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask)
                     # Calculate batch loss
-                    loss = criterion(output[0],labels)
+ 
+                    loss = criterion(torch.squeeze(outputs),labels)
                 # Add loss to list
                 running_loss_train += loss.item()
-                
 
+                
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
-                scaler.step(optimizer)              # Run an optimizer step
-                scale = scaler.get_scale()
+                scaler.step(optimizer)  
+                scale = scaler.get_scale()            # Run an optimizer step
                 scaler.update()
+
 
                 skip_lr_schedule = (scale > scaler.get_scale()) 
                             # # Append learning rate to list 
@@ -372,16 +353,17 @@ def main():
                 if not skip_lr_schedule:
                     warmupScheduler.step() # update both lr schedulers 
                 print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
+
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
-            # Save frequent checkpoints
+            
+             # Save frequent checkpoints
             if isinstance(model,nn.DataParallel):
                 model_checkpoint = model.module.state_dict()
             else:
                 model_checkpoint = model.state_dict()
             save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
-
 
 
 
@@ -394,19 +376,20 @@ def main():
 
                 # Data related stuff
                 batch = [t.cuda(device=device, non_blocking=True) for t in batch]
-                input_ids, attention_mask, segment_ids, labels, img_feats= batch
+                textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, labels = batch
+                #labels = torch.argmax(target,1)
+                
+                labels = torch.tensor([t.type(torch.float32)for t in labels], device=device)
+                
 
-
-
-                ### Forward pass ###
+                # Forward pass
                 with amp.autocast(): # Cast from f32 to f16 
-                    output = model(input_ids = input_ids,attention_mask=  attention_mask, position_ids = segment_ids, img_feats= img_feats)
-                    
-                    # Calculate batch loss
-                    loss = criterion(output[0],labels)
+                    outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask)
+
+                    # Calculate batch loss 
+                    loss = criterion(outputs,labels.unsqueeze(1))
                 # Add loss to list (val)
                 running_loss_val += loss.item()
-                print(f"Validation({epoch}) -> batch {i}, loss: {loss.item()}")
 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
@@ -414,13 +397,10 @@ def main():
 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
-            # Update the progress bar 
-            pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
-    
-    
-    
+            # # Update the progress bar 
+            pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} validation loss: {round(epochLossVal,3)}")
     except Exception as e:
-        print(repr(e))
+        print(e)
         # when sigterm caught, save checkpoint and exit
         
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
@@ -432,6 +412,13 @@ def main():
         sys.exit(0)
 
     print("--- Training Complete, Saving checkpoint ---")
+
+    plt.figure(1)
+    plt.plot(learningRate, "m-o", label="Learning Rate")
+    plt.xlabel("Epochs")
+    plt.ylabel("Learning Rate")
+    plt.legend()
+    plt.savefig(f"{args.output_dir}/learningRate.png")
     ####### Save completed checkpoint to the out folder ######
     if isinstance(model,nn.DataParallel):
         model_checkpoint = model.module.state_dict()
@@ -476,9 +463,9 @@ def main():
     plt.savefig(f"{args.output_dir}/ValLoss.png")
 
     # Also save the lists and stats in a csv to create other plots if needed 
-    with open(f"{args.output_dir}/Oscarlists.csv", "w") as f:
+    with open(f"{args.output_dir}/ViLBERTlists.csv", "w") as f:
         write = csv.writer(f)
-        write.writerow(["Learning rate over the epochs:"])
+        write.writerow(["Learning rate over the training steps:"])
         write.writerow(learningRate)
         write.writerow(["Training loss over the epochs:"])
         write.writerow(trainingLoss)

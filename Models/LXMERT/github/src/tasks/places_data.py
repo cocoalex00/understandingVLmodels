@@ -96,7 +96,6 @@ class PlacesTorchDataset(Dataset):
 
         img_id = datum['img_name']
         textInput = " "
-        print("sape")
          # Get image info
         pathname = self.raw_dataset.imgfeatpath + img_id + ".tsv"
 

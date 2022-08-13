@@ -8,6 +8,7 @@ from external.pytorch_pretrained_bert.modeling import BertPredictionHeadTransfor
 from common.module import Module
 from common.fast_rcnn import FastRCNN
 from common.visual_linguistic_bert import VisualLinguisticBert
+from torch.nn import GELU
 # from pytorch_transformers.modeling_bert import BertPooler
 
 BERT_WEIGHTS_NAME = 'pytorch_model.bin'
@@ -76,12 +77,19 @@ class ResNetVLBERT(Module):
         #     linear
         # )
 
-        self.final_mlp = torch.nn.Sequential(
-                torch.nn.Dropout(config.NETWORK.CLASSIFIER_DROPOUT, inplace=False),
-                torch.nn.Linear(config.NETWORK.VLBERT.hidden_size, config.NETWORK.CLASSIFIER_HIDDEN_SIZE),
-                torch.nn.ReLU(inplace=True),
-                torch.nn.Dropout(config.NETWORK.CLASSIFIER_DROPOUT, inplace=False),
-                torch.nn.Linear(config.NETWORK.CLASSIFIER_HIDDEN_SIZE, config.DATASET.ANSWER_VOCAB_SIZE),
+        # self.final_mlp = torch.nn.Sequential(
+        #         torch.nn.Dropout(config.NETWORK.CLASSIFIER_DROPOUT, inplace=False),
+        #         torch.nn.Linear(config.NETWORK.VLBERT.hidden_size, config.NETWORK.CLASSIFIER_HIDDEN_SIZE),
+        #         torch.nn.ReLU(inplace=True),
+        #         torch.nn.Dropout(config.NETWORK.CLASSIFIER_DROPOUT, inplace=False),
+        #         torch.nn.Linear(config.NETWORK.CLASSIFIER_HIDDEN_SIZE, config.DATASET.ANSWER_VOCAB_SIZE),
+        # )
+
+        self.final_mlp = nn.Sequential(
+            nn.Linear(config.NETWORK.VLBERT.hidden_size, config.NETWORK.VLBERT.hidden_size * 2),
+            GELU(),
+            nn.LayerNorm(config.NETWORK.VLBERT.hidden_size * 2 , eps=1e-12),
+            nn.Linear(config.NETWORK.VLBERT.hidden_size * 2 , config.DATASET.ANSWER_VOCAB_SIZE),
         )
 
         # init weights
@@ -202,8 +210,8 @@ class ResNetVLBERT(Module):
         # we only want the hidden states corresponding to the whole image  features
         #   input of the following form:
         #       [CLS] + [SEP] + [Whole image feature] + [ROI features]*36 + [END]
-        hm = hidden_states[:,2, :]
-        #hm = self.pooler(hidden_states)
+        #hm = hidden_states[:,2, :]
+        hm = self.pooler(hidden_states)
         #print(hm.shape)
         # hm = F.tanh(self.hm_out(hidden_states[_batch_inds, ans_pos]))
         # hi = F.tanh(self.hi_out(hidden_states[_batch_inds, ans_pos + 2]))

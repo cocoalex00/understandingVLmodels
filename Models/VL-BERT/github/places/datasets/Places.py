@@ -206,12 +206,13 @@ class Places(Dataset):
         imgfile = "/".join(imgfile) # join the rest of the name with slashes to make the rest of the path 
         image_path = os.path.join(self.root_path,imgfile)
         #print(img)
-        image = np.array(self._load_image(image_path))
+        #image = np.array(self._load_image(image_path))
 
         # Text input 
         text = "[CLS] [SEP]"
         q_retokens = self.tokenizer.tokenize(text)
         q_ids = self.tokenizer.convert_tokens_to_ids(q_retokens)
+        print(q_ids)
 
 
 

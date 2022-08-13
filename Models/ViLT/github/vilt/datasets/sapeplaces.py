@@ -23,7 +23,7 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
         max_text_len=2,
         draw_false_image=0,
         draw_false_text=0,
-        image_only=False,
+        image_only=False
     ):
         """
         data_dir : where dataset file *.arrow lives; existence should be guaranteed via DataModule.prepare_data
@@ -41,7 +41,6 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
         self.data_dir = data_dir
         self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         self.collator = DataCollatorForLanguageModeling(self.tokenizer,False)
-
         if len(names) != 0:
             tables = [
                 pa.ipc.RecordBatchFileReader(
@@ -242,11 +241,11 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
                     attention_mask[_i, : len(_attention_mask)] = _attention_mask
 
                 dict_batch[txt_key] = texts
-                dict_batch[f"{txt_key}_ids"] = input_ids
-                dict_batch[f"{txt_key}_labels"] = torch.full_like(input_ids, -100)
-                dict_batch[f"{txt_key}_ids_mlm"] = mlm_ids
-                dict_batch[f"{txt_key}_labels_mlm"] = mlm_labels
-                dict_batch[f"{txt_key}_masks"] = attention_mask
+                dict_batch[f"{txt_key}_ids"] = input_ids.cuda()
+                dict_batch[f"{txt_key}_labels"] = torch.full_like(input_ids, -100).cuda()
+                dict_batch[f"{txt_key}_ids_mlm"] = mlm_ids.cuda()
+                dict_batch[f"{txt_key}_labels_mlm"] = mlm_labels.cuda()
+                dict_batch[f"{txt_key}_masks"] = attention_mask.cuda()
 
         return dict_batch
 

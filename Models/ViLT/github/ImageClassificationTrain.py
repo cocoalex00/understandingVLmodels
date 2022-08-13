@@ -4,6 +4,8 @@
 
 # imports 
 import enum
+import matplotlib
+matplotlib.use("pdf")
 import matplotlib.pyplot as plt
 import torch
 
@@ -63,6 +65,9 @@ def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_che
         'current_epoch': current_epoch
     }
     # Save to checkpoint file, use different name for final checkpoint #
+    if not os.path.exists(folder_path + "/"):
+        os.makedirs(folder_path+"/")
+
     if final:
         torch.save(obj=checkpoint, f=f"{folder_path}/ViLTFineTuned.pth")
     else:
@@ -126,7 +131,7 @@ def main(_config):
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=16,
+        default=2,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
@@ -145,7 +150,7 @@ def main(_config):
     parser.add_argument(
         "--lr",
         type=int,
-        default=0.00002,
+        default=3e-4,
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -218,6 +223,17 @@ def main(_config):
 
     print("## Dataset loaded succesfully ##")
 
+
+    # batch = next(iter(trainDL))
+    # label = torch.tensor([l.item() for l in batch["label"]])
+    # for i in batch.keys():
+    #     print(i)
+    #     if batch[i] is list:
+    #         for tensor in batch[i]: tensor.to(device)
+    #     else:
+    #         print(batch[i])
+
+    # print(label)
    
     ##### MODEL STUFF #####
 
@@ -231,10 +247,13 @@ def main(_config):
     # Load the pre-trained checkpoint 
     ckpt = torch.load(args.pretrained)
     model.load_state_dict(ckpt["state_dict"], strict=False) # Not all the layers are included in the state dict (I added some)
+
+    # Only train the last classifiers
+    for name, param in model.named_parameters():
+        if "img_classifier" not in name:
+            param.requires_grad_(False)
     
     del ckpt
-    #  Only train the last classifier
-    #model.lxrt_encoder.requires_grad_(False)
 
     print("## Model Loaded ##")
 
@@ -257,11 +276,12 @@ def main(_config):
     reducelrScheduler = ReduceLROnPlateau(
             optimizer, mode="max", factor=0.2, patience=1, cooldown=1, threshold=0.001
         )
-    warmupSteps = int(args.num_epochs * args.warmup_proportion)                         # Calculate the number of epochs to warm up for
+    totalSteps = len(trainDL) * args.num_epochs
+    warmupSteps = int(totalSteps * args.warmup_proportion)                            # Calculate the number of epochs to warm up for
     warmupScheduler = get_linear_schedule_with_warmup(optimizer= optimizer,
                                                     num_warmup_steps= warmupSteps,
-                                                    num_training_steps = args.num_epochs)
-    
+                                                    num_training_steps = totalSteps
+                                                    )
 
 
 
@@ -320,7 +340,7 @@ def main(_config):
             
 
                 # Data related stuff
-                label = torch.tensor([l.item() for l in batch["label"]])
+                label = torch.tensor([l.item() for l in batch["label"]], device= device)
 
 
 
@@ -337,8 +357,17 @@ def main(_config):
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
                 scaler.step(optimizer)              # Run an optimizer step
+                scale = scaler.get_scale()
                 scaler.update()
 
+                skip_lr_schedule = (scale > scaler.get_scale()) 
+                            # # Append learning rate to list 
+                learningRate.append(optimizer.param_groups[0]['lr'])
+                
+                if not skip_lr_schedule:
+                    warmupScheduler.step() # update both lr schedulers 
+
+                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
@@ -354,7 +383,12 @@ def main(_config):
 
                 # Data related stuff
                 label = torch.tensor([l.item() for l in batch["label"]])
-
+                for i in batch.keys():
+                    print(i)
+                    if batch[i] is list:
+                        for tensor in batch[i]: tensor.to(device)
+                    else:
+                        batch[i].to(device)
 
 
 
@@ -371,10 +405,6 @@ def main(_config):
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
 
-            # Append learning rate to list 
-            learningRate.append(warmupScheduler.get_last_lr()[0])
-            
-            warmupScheduler.step()# update both lr schedulers 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
             # Update the progress bar 
@@ -396,7 +426,7 @@ def main(_config):
         model_checkpoint = model.module.state_dict()
     else:
         model_checkpoint = model.state_dict()
-    save_checkpoint(args.out,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
+    save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
     
     
     ####### Create plots and save them ######
