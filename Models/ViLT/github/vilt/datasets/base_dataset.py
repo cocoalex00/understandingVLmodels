@@ -181,7 +181,9 @@ class BaseDataset(torch.utils.data.Dataset):
             max_width = max([i[2] for i in img_sizes])
 
         for img_key in img_keys:
+            
             img = dict_batch[img_key]
+            
             view_size = len(img[0])
 
             new_images = [

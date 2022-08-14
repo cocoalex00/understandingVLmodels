@@ -14,6 +14,8 @@ from vilt.modules import ViLTransformerSS
 from vilt.datasets.Places_dataset import Places365
 import functools
 
+import traceback
+
 
 from vilt.config import ex
 
@@ -131,13 +133,13 @@ def main(_config):
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=1000,
+        default=30,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -150,7 +152,7 @@ def main(_config):
     parser.add_argument(
         "--lr",
         type=int,
-        default=3e-4,
+        default=(3e-4),
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -224,10 +226,14 @@ def main(_config):
     print("## Dataset loaded succesfully ##")
 
 
-    batch = next(iter(trainDL))
-    label = torch.tensor([l.item() for l in batch["label"]])
-    for i in batch.keys():
-        print(i)
+    #batch = next(iter(trainDL))
+    #label = torch.tensor([l.item() for l in batch["label"]])
+
+ 
+        #image = image.to(device)
+
+    #print(batch["image"])
+
         # if batch[i] is list:
         #     for tensor in batch[i]: tensor.to(device)
         # else:
@@ -265,6 +271,9 @@ def main(_config):
         print("Data parallelization activated")
     else:
         model.to(device)
+
+    
+    print(next(model.parameters()).device)
 
     # Loss fnc and optimizer
     criterion = CrossEntropyLoss()
@@ -335,15 +344,18 @@ def main(_config):
             model.train() # Get model in training mode
 
             running_loss_train = 0 # Keep track of avg loss for each epoch (train)
-            for i, batch in enumerate(trainDL):
-                optimizer.zero_grad()               # Clear gradients of the optimizer
+            for j, batch in enumerate(trainDL):
+                optimizer.zero_grad()           # Clear gradients of the optimizer
+
+                label = torch.tensor(batch["label"]).to(device).squeeze()
+                for i in batch.keys():
+                    if type(batch[i]) != list:
+                        batch[i] = batch[i].to(device)
+
+                batch["image"] = [batch["image"][0].to(device)]
             
 
-                # Data related stuff
-                label = torch.tensor([l.item() for l in batch["label"]], device= device)
-
-
-
+                # Data related stufi
 
                 ### Forward pass ###
                 with amp.autocast(): # Cast from f32 to f16 
@@ -367,11 +379,20 @@ def main(_config):
                 if not skip_lr_schedule:
                     warmupScheduler.step() # update both lr schedulers 
 
-                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
+                print(f"Epoch({epoch}) -> batch {j}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
 
+            print(f"epoch loss: {epochLoss}")
+
+
+            ############################################## save checkpoint each epoch ##############################################
+            if isinstance(model,nn.DataParallel):
+                model_checkpoint = model.module.state_dict()
+            else:
+                model_checkpoint = model.state_dict()
+            save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
 
 
             ########################################### Validation  #####################################################
@@ -379,16 +400,16 @@ def main(_config):
             model.eval() # Get model in eval mode
 
             running_loss_val = 0 # Keep track of avg loss for each epoch (val)
-            for i, batch in enumerate(valDL):
+            for j, batch in enumerate(valDL):
 
                 # Data related stuff
-                label = torch.tensor([l.item() for l in batch["label"]])
+            
+                label = torch.tensor(batch["label"]).to(device).squeeze()
                 for i in batch.keys():
-                    print(i)
-                    if batch[i] is list:
-                        for tensor in batch[i]: tensor.to(device)
-                    else:
-                        batch[i].to(device)
+                    if type(batch[i]) != list:
+                        batch[i] = batch[i].to(device)
+
+                batch["image"] = [batch["image"][0].to(device)]
 
 
 
@@ -409,9 +430,12 @@ def main(_config):
 
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
+    
+    
+    
     except Exception as e:
         # when sigterm caught, save checkpoint and exit
-        print(e)
+        traceback.print_exc()
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
         if isinstance(model,nn.DataParallel):
             model_checkpoint = model.module.state_dict()

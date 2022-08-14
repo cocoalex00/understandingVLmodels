@@ -35,7 +35,7 @@ class Places365(PlacesDatasetBase):
                     file=sys.stderr,
                 )
                 index = random.randint(0, len(self.index_mapper) - 1)
-            label = torch.tensor(self.table["label"][index].as_py())
+            label = self.table["label"][index].as_py()
             text = self.get_text(index)["text"]
 
         return {

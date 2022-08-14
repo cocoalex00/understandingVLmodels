@@ -6,7 +6,7 @@ import pyarrow as pa
 import os
 
 from PIL import Image
-from vilt.transforms import keys_to_transforms
+from vilt.transforms import keys_to_transforms, pixelbert
 import numpy as np
 
 from transformers import BertTokenizer
@@ -33,6 +33,7 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
 
         super().__init__()
         self.text_column_name = text_column_name
+        self.transforms = keys_to_transforms(["pixelbert"], size=256)
         self.names = names
         self.max_text_len = max_text_len
         self.draw_false_image = draw_false_image
@@ -94,7 +95,9 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
 
     def get_image(self, index, image_key="img"):
         image = self.get_raw_image(index, image_key=image_key)
-        image_tensor = torch.tensor(np.array(image))    ##### maybe need to add a type
+        #image_tensor = [torch.tensor(np.array(image)).permute(2,0,1)]  
+        image_tensor = [tr(image) for tr in self.transforms]  ##### maybe need to add a type
+
         return {
             "image": image_tensor,
             "img_index": self.index_mapper[index][0],
@@ -167,11 +170,12 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
         dict_batch = {k: [dic[k] if k in dic else None for dic in batch] for k in keys}
 
         img_keys = [k for k in list(dict_batch.keys()) if "image" in k]
-        print(img_keys)
+
         img_sizes = list()
-        
+
         for img_key in img_keys:
             img = dict_batch[img_key]
+
             img_sizes += [ii.shape for i in img if i is not None for ii in i]
 
         for size in img_sizes:
@@ -240,7 +244,7 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
                 dict_batch[f"{txt_key}_labels_mlm"] = mlm_labels
                 dict_batch[f"{txt_key}_masks"] = attention_mask
 
-                print(dict_batch.keys())
+
 
         return dict_batch
 

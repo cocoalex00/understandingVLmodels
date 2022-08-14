@@ -279,7 +279,7 @@ def compute_imgcls(pl_module, batch):
     imgcls_logits = pl_module.img_classifier(infer["cls_feats"])
     imgcls_labels = batch["label"]
     imgcls_labels = torch.tensor(imgcls_labels).to(pl_module.device).long()
-    imgcls_loss = F.cross_entropy(imgcls_logits, imgcls_labels)
+    
 
     ret = {
         #"imgcls_loss": imgcls_loss,
