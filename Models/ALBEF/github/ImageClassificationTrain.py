@@ -457,20 +457,20 @@ def main():
 
 
             # Calculate the avg loss of the training epoch and append it to list 
-            epochLoss = running_loss_train/len(trainDataset)
+            epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
 
             if is_main_process() or not DISTRIBUTED:
                 print(f"epoch loss: {epochLoss}")
 
             
-
+            if DISTRIBUTED:
+                    # wait for all gpus to get to here before saving
+                    dist.barrier()
             
             ########################################### Checkpoint every epoch ##########################################
             if is_main_process() or not DISTRIBUTED:
                 if DISTRIBUTED:
-                    # wait for all gpus to get to here before saving
-                    dist.barrier()
                     model_checkpoint = model.module.state_dict()
                 else:
                     model_checkpoint = model.state_dict()
@@ -502,7 +502,7 @@ def main():
                 running_loss_val += lossitem
 
             # Calculate the avg loss of the validation epoch and append it to list 
-            epochLossVal = running_loss_val/len(valDataset)
+            epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
@@ -515,11 +515,13 @@ def main():
     except :
         traceback.print_exc()
         # when sigterm caught, save checkpoint and exit
+        if DISTRIBUTED:
+                # wait for all gpus to get to here before saving
+            dist.barrier()
+
         if is_main_process() or not DISTRIBUTED:
             # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
             if DISTRIBUTED:
-                # wait for all gpus to get to here before saving
-                dist.barrier()
                 model_checkpoint = model.module.state_dict()
             else:
                 model_checkpoint = model.state_dict()

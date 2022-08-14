@@ -224,14 +224,14 @@ def main(_config):
     print("## Dataset loaded succesfully ##")
 
 
-    # batch = next(iter(trainDL))
-    # label = torch.tensor([l.item() for l in batch["label"]])
-    # for i in batch.keys():
-    #     print(i)
-    #     if batch[i] is list:
-    #         for tensor in batch[i]: tensor.to(device)
-    #     else:
-    #         print(batch[i])
+    batch = next(iter(trainDL))
+    label = torch.tensor([l.item() for l in batch["label"]])
+    for i in batch.keys():
+        print(i)
+        # if batch[i] is list:
+        #     for tensor in batch[i]: tensor.to(device)
+        # else:
+        #     print(batch[i])
 
     # print(label)
    

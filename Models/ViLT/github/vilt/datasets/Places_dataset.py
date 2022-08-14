@@ -27,7 +27,7 @@ class Places365(PlacesDatasetBase):
         while result is None:
             try:
                 image = self.get_image(index)["image"]
-
+                text = self.get_text(index)["text"]
                 result = True
             except:
                 print(

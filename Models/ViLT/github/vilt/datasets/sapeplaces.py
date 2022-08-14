@@ -161,22 +161,18 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
         return ret
 
     def collate(self, batch, mlm_collator=None):
-        print("executed")
-        #mlm_collator = self.collator
+
         batch_size = len(batch)
-        #print(batch_size)
         keys = set([key for b in batch for key in b.keys()])
         dict_batch = {k: [dic[k] if k in dic else None for dic in batch] for k in keys}
 
         img_keys = [k for k in list(dict_batch.keys()) if "image" in k]
-        #print(dict_batch)
+        print(img_keys)
         img_sizes = list()
-
+        
         for img_key in img_keys:
             img = dict_batch[img_key]
-            img = [im.permute(2,0,1) for im in img]
-            #print(img[1].shape)
-            img_sizes += [i.shape for i in img if i is not None for ii in i]
+            img_sizes += [ii.shape for i in img if i is not None for ii in i]
 
         for size in img_sizes:
             assert (
@@ -190,23 +186,20 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
         for img_key in img_keys:
             img = dict_batch[img_key]
             view_size = len(img[0])
-           # print(view_size)
+
             new_images = [
                 torch.zeros(batch_size, 3, max_height, max_width)
                 for _ in range(view_size)
             ]
-            print(batch_size)
-            print(view_size)
+
             for bi in range(batch_size):
                 orig_batch = img[bi]
-                #print(orig_batch)
                 for vi in range(view_size):
                     if orig_batch is None:
                         new_images[vi][bi] = None
                     else:
                         orig = img[bi][vi]
-                        #print(orig)
-                        new_images[vi][bi, :, : orig.shape[0], : orig.shape[1]] = orig
+                        new_images[vi][bi, :, : orig.shape[1], : orig.shape[2]] = orig
 
             dict_batch[img_key] = new_images
 
@@ -241,11 +234,13 @@ class PlacesDatasetBase(torch.utils.data.Dataset):
                     attention_mask[_i, : len(_attention_mask)] = _attention_mask
 
                 dict_batch[txt_key] = texts
-                dict_batch[f"{txt_key}_ids"] = input_ids.cuda()
-                dict_batch[f"{txt_key}_labels"] = torch.full_like(input_ids, -100).cuda()
-                dict_batch[f"{txt_key}_ids_mlm"] = mlm_ids.cuda()
-                dict_batch[f"{txt_key}_labels_mlm"] = mlm_labels.cuda()
-                dict_batch[f"{txt_key}_masks"] = attention_mask.cuda()
+                dict_batch[f"{txt_key}_ids"] = input_ids
+                dict_batch[f"{txt_key}_labels"] = torch.full_like(input_ids, -100)
+                dict_batch[f"{txt_key}_ids_mlm"] = mlm_ids
+                dict_batch[f"{txt_key}_labels_mlm"] = mlm_labels
+                dict_batch[f"{txt_key}_masks"] = attention_mask
+
+                print(dict_batch.keys())
 
         return dict_batch
 
