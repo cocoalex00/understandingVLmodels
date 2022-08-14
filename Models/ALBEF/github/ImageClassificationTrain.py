@@ -3,6 +3,7 @@
 # This source code implements the training script to fine-tune the adapted ALBEF model to image classification.
 
 # imports 
+from selectors import EpollSelector
 import matplotlib.pyplot as plt
 import torch
 import matplotlib
@@ -47,7 +48,6 @@ gpu_list = "0,1,2,3"
 os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 
 def init_distributed():
-
     # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
     dist_url = "env://" # default
 
@@ -66,7 +66,6 @@ def init_distributed():
 
     # synchronizes all the threads to reach this point before moving on
     dist.barrier()
-    setup_for_distributed(rank==0)
 
 
 
@@ -119,13 +118,22 @@ def sigterm_handler(signal,frame):
 
 #### Main Script ###
 def main():
-    init_distributed()
+    n_gpu = torch.cuda.device_count() 
+    # check for multiple gpus and spawn processes
+    if n_gpu > 1:
+        init_distributed()
+        DISTRIBUTED = True
+        print(f"spawned process {int(os.environ['RANK'])}/ {int(os.environ['WORLD_SIZE'])}")
+    else:
+        DISTRIBUTED = False
+
+    
     # initialise the sigterm handler
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
-    ####
+
     parser.add_argument(
         "--pretrained",
         type=str,
@@ -218,9 +226,6 @@ def main():
     # load the config file
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
 
-    
-
-
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -228,32 +233,34 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False          # This may allow training on the newer gpus idk
 
-
-
     # CUDA check 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+    if dist.is_available() and dist.is_initialized():
+        device = dist.get_rank()
+    else:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
+
     n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
 
-    if is_main_process:
+    if is_main_process() or not DISTRIBUTED:
         print("the device being used is: " + str(device))
         print("number of gpus available: " + str(n_gpu))
         print(f"Using mixed precision training: {APEX_AVAILABLE}")
 
-    if n_gpu > 1: 
-        args.batch_size = args.batch_size * n_gpu   # Augment batch size if more than one gpu is available
+    # if n_gpu > 1: 
+    #     args.batch_size = args.batch_size * n_gpu   # Augment batch size if more than one gpu is available
 
     
-    # Load the dataset
-    if is_main_process:
+    #################################################### Dataset ##################################################################
+    if is_main_process() or not DISTRIBUTED:
         print("## Loading the dataset ##")
 
     trainDataset = places365(args.annotTrain, args.root_train)
     valDataset = places365(args.annotVal, args.root_val)
 
-    if n_gpu > 1:
-
+    if DISTRIBUTED:
         trainsampler = DistributedSampler(dataset=trainDataset, shuffle=True)   
-        valsampler = DistributedSampler(dataset=valDataset, shuffle=True)   
+        valsampler = DistributedSampler(dataset=valDataset, shuffle=True) 
+
         trainDL = DataLoader(
             dataset= trainDataset,
             batch_size= args.batch_size,
@@ -268,10 +275,7 @@ def main():
             pin_memory=True,
             sampler= valsampler
         )
-
-
     else:
-
         trainDL = DataLoader(
             dataset= trainDataset,
             batch_size= args.batch_size,
@@ -286,57 +290,83 @@ def main():
         )
 
 
-    if is_main_process:
+    if is_main_process()  or not DISTRIBUTED:
         print("## Dataset loaded succesfully ##")
 
 
-    ##### MODEL STUFF #####
+    #################################################### MODEL STUFF ################################################################
     # Load the Model
-    if is_main_process:
+    if is_main_process() or not DISTRIBUTED:
         print("## Loading the Model ##")
 
+    
+    # Load the model and freeze everything up to the last linear layers (Image classifier)
+    model = ALBEF(config=config, text_encoder="bert-base-uncased", num_labels = args.num_labels)
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased") 
 
-    # since there is no textual input, i am gonna tokenize it once and pass the same input to the model every time to speed up the process
-    text_inputs = tokenizer(" ", padding='longest', return_tensors="pt").to(device)  # Tokenize sentence
-    # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = ALBEF(config=config, text_encoder="bert-base-uncased", tokenizer= tokenizer, num_labels = args.num_labels)
 
-    # Load pretrained checkpoint
-    ckpt = torch.load(args.pretrained)
-    model.load_state_dict(ckpt["model"], strict= False)
 
-    del ckpt
-    #model.load_state_dict()
+    ##################################################### Checkpoint or pre-trained ###################################################
+    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth")):
+        if is_main_process() or not DISTRIBUTED:
+            print(f"Checkpoint found, loading")
+
+        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth"))
+        start_epoch = checkpoint['current_epoch']
+        learningRate = checkpoint['lr']
+        trainingLoss = checkpoint['Tloss']
+        valLoss = checkpoint['Vloss']
+
+        # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+        if DISTRIBUTED:
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
+        else:
+            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
+        optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+        warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+        reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
+
+        if is_main_process() or not DISTRIBUTED:
+            print("Checkpoint loaded")
+    else:
+        if is_main_process() or not DISTRIBUTED:
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
+        # Load pretrained checkpoint
+        ckpt = torch.load(args.pretrained)
+        model.load_state_dict(ckpt["model"], strict= False)
+        del ckpt
+
+
+
 
     # Only train the last classifiers
     for name, param in model.named_parameters():
-        print(name)
         if "cls_head" not in name:
             param.requires_grad_(False)
 
     
-    if is_main_process:
+    if is_main_process() or not DISTRIBUTED:
         print("## Model Loaded ##")
 
-    # Data paralellization in multiple gpus if more than one is available (only in one node, multiple is too hard f***)
-    if n_gpu > 1:
-        # device = torch.device("cuda")
-        # model = nn.DataParallel(model)
-        # model.to(device)
+    #################################################### Wrap up model with DDP and send to device #################################################
+    if DISTRIBUTED:
         model =  nn.SyncBatchNorm.convert_sync_batchnorm(model)
         local_rank = int(os.environ["LOCAL_RANK"])
+        model.to(local_rank)
         model = nn.parallel.DistributedDataParallel(model,decide_ids = [local_rank])
-        if is_main_process:
+        if is_main_process():
             print("Data parallelization activated")
     else:
         model.to(device)
 
-    # Loss fnc and optimizer
+
+
+
+    ############################################### loss functions, optims, schedulers ##################################################
     criterion = CrossEntropyLoss()
     optimizer = AdamW(model.parameters(), args.lr)
     # Create gradient scaler for f16 precision
-    scaler = amp.GradScaler()
+    scaler = amp.GradScaler(enabled=True)
 
     # learning rate schedulers 
     reducelrScheduler = ReduceLROnPlateau(
@@ -359,38 +389,11 @@ def main():
     start_epoch = 0
 
 
-    # Check for available checkpoints 
-    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth")):
-        if is_main_process:
-            print(f"Checkpoint found, loading")
-        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth"))
-        start_epoch = checkpoint['current_epoch']
-        learningRate = checkpoint['lr']
-        trainingLoss = checkpoint['Tloss']
-        valLoss = checkpoint['Vloss']
-
-        # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
-        if isinstance(model, nn.DataParallel):
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
-        else:
-            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
-        optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
-        warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
-        reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
-
-        if is_main_process:
-            print("Checkpoint loaded")
-    else:
-        if is_main_process:
-            print("No checkpoint found, starting fine tunning from base pre-trained model")
-
-
-
 
     # Progress bars
     pbarTrain = tqdm(range(start_epoch, args.num_epochs))
 
-    # Training loop ####################################################################################################################################
+    ######################################################### Training loop ############################################################
 
     
     print("***** Running training *****")
@@ -410,7 +413,8 @@ def main():
             
 
                 # Data related stuff
-                image, _, label = batch
+                image, text, label = batch
+                text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
                 image, label = image.to(device), label.to(device) 
                 
 
@@ -421,7 +425,7 @@ def main():
 
                     # Calculate batch loss
                     loss = criterion(output,label)
-                # Add loss to list
+                # Add batch loss to list
                 running_loss_train += loss.item()
 
                 ### Backward pass ###
@@ -431,25 +435,33 @@ def main():
                 scaler.update()
 
                 skip_lr_schedule = (scale > scaler.get_scale()) 
-                            # # Append learning rate to list 
+                # Append learning rate to list 
                 learningRate.append(optimizer.param_groups[0]['lr'])
                 
                 if not skip_lr_schedule:
                    warmupScheduler.step() # update both lr schedulers 
-                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
+
+                print(f"process {device}: {loss.item()}")
+
+                if is_main_process() or not DISTRIBUTED:
+                    print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
 
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
-
-            print(f"epoch loss: {epochLoss}")
             trainingLoss.append(epochLoss)
 
-            
-            # Save frequent checkpoints
+            if is_main_process() or not DISTRIBUTED:
+                print(f"epoch loss: {epochLoss}")
 
-            if is_main_process:
-                if isinstance(model,nn.DataParallel):
+            
+
+            
+            ########################################### Checkpoint every epoch ##########################################
+            if is_main_process() or not DISTRIBUTED:
+                if DISTRIBUTED:
+                    # wait for all gpus to get to here before saving
+                    dist.barrier()
                     model_checkpoint = model.module.state_dict()
                 else:
                     model_checkpoint = model.state_dict()
@@ -485,71 +497,74 @@ def main():
 
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
+    
+    
+    ############################################ Do when exception happens (eg sigterm) #############################################
     except :
         traceback.print_exc()
         # when sigterm caught, save checkpoint and exit
-        
-        if is_main_process:
+        if is_main_process() or not DISTRIBUTED:
             # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
-            if isinstance(model,nn.DataParallel):
+            if DISTRIBUTED:
+                # wait for all gpus to get to here before saving
+                dist.barrier()
                 model_checkpoint = model.module.state_dict()
             else:
                 model_checkpoint = model.state_dict()
             save_checkpoint(args.checkpoint_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
         sys.exit(0)
 
-    print("--- Training Complete, Saving checkpoint ---")
-    sys.exit(0)
-    ####### Save completed checkpoint to the out folder ######
-    if is_main_process:
-        if isinstance(model,nn.DataParallel):
+
+    
+
+    ############################################ Save completed checkpoint to the out folder #############################################
+    if is_main_process() or not DISTRIBUTED :
+        print("--- Training Complete, Saving checkpoint ---")
+        if DISTRIBUTED:
             model_checkpoint = model.module.state_dict()
         else:
             model_checkpoint = model.state_dict()
         save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
         
     
-    ####### Create plots and save them ######
-    plt.style.use(['seaborn']) # change style (looks cooler!)
-    # learning rate 
-    plt.figure(1)
-    plt.plot(learningRate, "m-o", label="Learning Rate")
-    plt.xlabel("Epochs")
-    plt.ylabel("Learning Rate")
-    plt.legend()
-    if is_main_process:
+    ###################################################### Create plots and save them ########################################################
+    if is_main_process() or not DISTRIBUTED:
+        plt.style.use(['seaborn']) # change style (looks cooler!)
+        # learning rate 
+        plt.figure(1)
+        plt.plot(learningRate, "m-o", label="Learning Rate")
+        plt.xlabel("Epochs")
+        plt.ylabel("Learning Rate")
+        plt.legend()
+    
         plt.savefig(f"{args.output_dir}/learningRate.png")
 
-    # Combined loss 
-    plt.figure(2)
-    plt.plot(trainingLoss,"r-o", label="Train Loss", )
-    plt.plot(valLoss,"-p", label="Validation Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    if is_main_process:
+        # Combined loss 
+        plt.figure(2)
+        plt.plot(trainingLoss,"r-o", label="Train Loss", )
+        plt.plot(valLoss,"-p", label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
         plt.savefig(f"{args.output_dir}/CombinedLoss.png")
 
-    # Train loss 
-    plt.figure(3)
-    plt.plot(trainingLoss, label="Train Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    if is_main_process:
+        # Train loss 
+        plt.figure(3)
+        plt.plot(trainingLoss, label="Train Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
         plt.savefig(f"{args.output_dir}/TrainLoss.png")
 
-    # Val loss 
-    plt.figure(4)
-    plt.plot(valLoss, label="Validation Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    if is_main_process:
+        # Val loss 
+        plt.figure(4)
+        plt.plot(valLoss, label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
         plt.savefig(f"{args.output_dir}/ValLoss.png")
 
-    # Also save the lists and stats in a csv to create other plots if needed
-    if is_main_process: 
+        # Also save the lists and stats in a csv to create other plots if needed
         with open(f"{args.output_dir}/ALBEFlists.csv", "w") as f:
             write = csv.writer(f)
             write.writerow(["Learning rate over the epochs:"])

@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 from dataset.utils import pre_caption
 from torchvision import transforms
+from transformers import BertTokenizer
 
 
 class places365(Dataset):
@@ -29,6 +30,7 @@ class places365(Dataset):
         ])   
         self.image_root = image_root
         self.max_words = 2
+        
         
     def __len__(self):
         return len(self.ann)
