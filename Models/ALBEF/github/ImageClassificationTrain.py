@@ -141,6 +141,10 @@ def main():
         help="Path to the pth file that contains the model's checkpoint"
     )
     parser.add_argument(
+        "--local_rank",
+        type=int
+    )
+    parser.add_argument(
         "--config",
         type=str,
         default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
@@ -235,7 +239,7 @@ def main():
 
     # CUDA check 
     if dist.is_available() and dist.is_initialized():
-        device = dist.get_rank()
+        device = "cuda:" + str(dist.get_rank())
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 
@@ -311,7 +315,7 @@ def main():
         if is_main_process() or not DISTRIBUTED:
             print(f"Checkpoint found, loading")
 
-        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth"))
+        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth"), map_location=device)
         start_epoch = checkpoint['current_epoch']
         learningRate = checkpoint['lr']
         trainingLoss = checkpoint['Tloss']
@@ -319,7 +323,7 @@ def main():
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
@@ -332,7 +336,7 @@ def main():
         if is_main_process() or not DISTRIBUTED:
             print("No checkpoint found, starting fine tunning from base pre-trained model")
         # Load pretrained checkpoint
-        ckpt = torch.load(args.pretrained)
+        ckpt = torch.load(args.pretrained,map_location=device)
         model.load_state_dict(ckpt["model"], strict= False)
         del ckpt
 
@@ -353,7 +357,7 @@ def main():
         model =  nn.SyncBatchNorm.convert_sync_batchnorm(model)
         local_rank = int(os.environ["LOCAL_RANK"])
         model.to(local_rank)
-        model = nn.parallel.DistributedDataParallel(model,decide_ids = [local_rank])
+        model = nn.parallel.DistributedDataParallel(model,device_ids = [local_rank])
         if is_main_process():
             print("Data parallelization activated")
     else:
@@ -364,6 +368,7 @@ def main():
 
     ############################################### loss functions, optims, schedulers ##################################################
     criterion = CrossEntropyLoss()
+    learningrate = np.sqrt(n_gpu) * args.lr
     optimizer = AdamW(model.parameters(), args.lr)
     # Create gradient scaler for f16 precision
     scaler = amp.GradScaler(enabled=True)
@@ -406,6 +411,7 @@ def main():
             ########################################### Training  #####################################################
 
             model.train() # Get model in training mode
+            print(len(trainDataset))
 
             running_loss_train = 0 # Keep track of avg loss for each epoch (train)
             for i, batch in enumerate(trainDL):
@@ -426,7 +432,10 @@ def main():
                     # Calculate batch loss
                     loss = criterion(output,label)
                 # Add batch loss to list
-                running_loss_train += loss.item()
+                lossitem = loss.detach()
+                dist.all_reduce(lossitem)
+                lossitem = lossitem.item()/n_gpu
+                running_loss_train += lossitem
 
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
@@ -441,14 +450,14 @@ def main():
                 if not skip_lr_schedule:
                    warmupScheduler.step() # update both lr schedulers 
 
-                print(f"process {device}: {loss.item()}")
+            
 
                 if is_main_process() or not DISTRIBUTED:
-                    print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
+                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
 
 
             # Calculate the avg loss of the training epoch and append it to list 
-            epochLoss = running_loss_train/len(trainDL)
+            epochLoss = running_loss_train/len(trainDataset)
             trainingLoss.append(epochLoss)
 
             if is_main_process() or not DISTRIBUTED:
@@ -487,10 +496,13 @@ def main():
                     # Calculate batch loss
                     loss = criterion(output,label)
                 # Add loss to list (val)
-                running_loss_val += loss.item()
+                lossitem = loss.detach()
+                dist.all_reduce(lossitem)
+                lossitem = lossitem.item()/n_gpu
+                running_loss_val += lossitem
 
             # Calculate the avg loss of the validation epoch and append it to list 
-            epochLossVal = running_loss_val/len(valDL)
+            epochLossVal = running_loss_val/len(valDataset)
             valLoss.append(epochLossVal)
 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 

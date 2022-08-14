@@ -54,7 +54,7 @@ class places365(Dataset):
         imgfile = [directory for directory in imgfile if directory not in list_root and directory not in otherstuff] # get rid of all the parts of the img_name which are already in the root path
         imgfile = "/".join(imgfile) # join the rest of the name with slashes to make the rest of the path 
 
-        image_path = os.path.join(self.image_root,imgfile)      
+        image_path = self.image_root + imgfile      
         image0 = Image.open(image_path).convert('RGB')   
         image0 = self.transform(image0)   
                 
