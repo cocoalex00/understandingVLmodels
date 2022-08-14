@@ -466,7 +466,7 @@ def main():
             
             if DISTRIBUTED:
                     # wait for all gpus to get to here before saving
-                    dist.barrier()
+                dist.barrier()
             
             ########################################### Checkpoint every epoch ##########################################
             if is_main_process() or not DISTRIBUTED:
