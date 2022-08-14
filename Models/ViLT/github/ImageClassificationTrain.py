@@ -196,7 +196,7 @@ def main(_config):
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
     collator = DataCollatorForLanguageModeling(tokenizer,False)
 
-    trainDataset = Places365(args.data_path, split="val")   ####### Change this to train for the HTCONDOR!!!!!!!
+    trainDataset = Places365(args.data_path, split="train")   ####### Change this to train for the HTCONDOR!!!!!!!
     valDataset = Places365(args.data_path, split="val") 
 
     # create the two custom collator functions
