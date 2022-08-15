@@ -50,7 +50,7 @@ def init_distributed():
     world_size = int(os.environ['WORLD_SIZE'])
     local_rank = int(os.environ['LOCAL_RANK'])
     dist.init_process_group(
-            backend="nccl",
+            backend="gloo",
             init_method=dist_url,
             world_size=world_size,
             rank=rank)
@@ -127,7 +127,7 @@ def main():
         "--from_pretrained",
         default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
         type=str,
-        help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part",
+        help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part"
     )
     #### Annotations and TSV files 
     parser.add_argument(
@@ -138,7 +138,7 @@ def main():
     )
     parser.add_argument(
         "--local_rank",
-        type=int,
+        type=int
     )
     parser.add_argument(
         "--annotVal",
