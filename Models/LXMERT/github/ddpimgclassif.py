@@ -127,7 +127,7 @@ def main():
         "--from_pretrained",
         default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
         type=str,
-        help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part",
+        help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part"
     )
     #### Annotations and TSV files 
     parser.add_argument(
@@ -138,7 +138,7 @@ def main():
     )
     parser.add_argument(
         "--local_rank",
-        type=int,
+        type=int
     )
     parser.add_argument(
         "--annotVal",
@@ -163,7 +163,7 @@ def main():
         "--num_labels",
         default=365,
         type=int,
-        help="Number of classes in the dataset",
+        help="Number of classes in the dataset"
     )
     parser.add_argument(
         "--output_dir",
