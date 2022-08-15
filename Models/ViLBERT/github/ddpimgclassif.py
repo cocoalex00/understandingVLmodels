@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import torch
 from torch.utils.data import DataLoader
 
+import traceback
+
 import csv
 import signal
 import sys 
@@ -52,7 +54,7 @@ def init_distributed():
     world_size = int(os.environ['WORLD_SIZE'])
     local_rank = int(os.environ['LOCAL_RANK'])
     dist.init_process_group(
-            backend="nccl",
+            backend="gloo",
             init_method=dist_url,
             world_size=world_size,
             rank=rank)
@@ -496,7 +498,7 @@ def main():
 
                 # Forward pass
                 with amp.autocast(): # Cast from f32 to f16 
-                    outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask)
+                    outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask)
                     
                     # Calculate batch loss 
                     loss = criterion(outputs,labels)
@@ -518,7 +520,7 @@ def main():
             if is_main_process() or not DISTRIBUTED:
                 pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
     except Exception as e:
-        print(e)
+        traceback.print_exc()
         # when sigterm caught, save checkpoint and exit
         
         # when sigterm caught, save checkpoint and exit

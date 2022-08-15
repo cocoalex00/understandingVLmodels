@@ -30,7 +30,7 @@ def get_optimizer(optim):
     return optimizer
 
 
-def parse_args():
+def parse_args4():
     parser = argparse.ArgumentParser()
 
     # Data Splits
