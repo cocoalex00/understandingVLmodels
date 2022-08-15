@@ -388,7 +388,7 @@ def main():
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
