@@ -301,7 +301,7 @@ def main():
         print("## Loading the Model ##")
 
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = VILBertForImageClassification(args.config_file, args.num_labels, args.from_pretrained)
+    model = VILBertForImageClassification(args.config_file, args.num_labels, args.from_pretrained, device)
     # Only train the last classifier
     model.vilbertBase.requires_grad_(False)
 

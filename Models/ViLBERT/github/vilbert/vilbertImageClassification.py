@@ -14,7 +14,7 @@ from .vilbert import VILBertForVLTasks, BertConfig, BertLayerNorm , GeLU
 
 class VILBertForImageClassification(torch.nn.Module):
 
-    def __init__(self,config_file, num_labels, from_pretrained, default_gpu=True):
+    def __init__(self,config_file, num_labels, from_pretrained,device, default_gpu=True):
         """ Vilbert Model adapted to perform image classification.
 
             config_file: path to the json file containing BERT's configuration
@@ -31,6 +31,7 @@ class VILBertForImageClassification(torch.nn.Module):
             config=self.config,
             num_labels=num_labels,
             default_gpu=default_gpu,
+            device=device
         )
 
         # Last fully connected layer (design taken from original paper)
