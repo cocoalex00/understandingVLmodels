@@ -47,7 +47,7 @@ from distribuido import setup_for_distributed, save_on_master, is_main_process
 
 
 gpu_list = "0,1,2,3"
-os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+#os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 
 def init_distributed():
     # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
