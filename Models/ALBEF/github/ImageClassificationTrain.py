@@ -369,7 +369,7 @@ def main():
     ############################################### loss functions, optims, schedulers ##################################################
     criterion = CrossEntropyLoss()
     learningrate = np.sqrt(n_gpu) * args.lr
-    optimizer = AdamW(model.parameters(), args.lr)
+    optimizer = AdamW(model.parameters(), learningrate)
     # Create gradient scaler for f16 precision
     scaler = amp.GradScaler(enabled=True)
 

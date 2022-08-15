@@ -17,7 +17,9 @@ def process(root, iden, row):
     identifier = row[0]["img_path"].replace("/","-").split(".")[0] 
     text = " "
 
-    with open(os.path.join(root,path), "rb") as fp:
+    imgpath = root + path
+    print(imgpath)
+    with open(imgpath, "rb") as fp:
         img= fp.read()
 
 
@@ -27,21 +29,18 @@ def process(root, iden, row):
 def make_arrow(root, dataset_root,split):
 
     if split == "train":
-        train_data = list(
-            map(json.loads, open(f"{root}/places365_train_alexsplit.json").readlines())
-        )
+        train_data = json.load(open(f"{root}/places365_train_alexsplit.json"))
         val_data = None
         test_data = None
 
     elif split =="val":
-        val_data = list(
-            map(json.loads, open(f"{root}/places365_val.json").readlines())
-        )
+        val_data = json.load(open(f"{root}/places365_val.json"))
+        
 
         test_data = None
         train_data = None
     elif split == "test":
-        test_data = list(map(json.loads, open(f"{root}/places365_test.json").readlines()))
+        test_data = json.load(open(f"{root}/places365_test.json"))
 
         train_data = None
         val_data = None
@@ -65,7 +64,7 @@ def make_arrow(root, dataset_root,split):
         _annot[row["img_path"].replace("/","-").split(".")[0]].append(row)
     annotations[split] = _annot
     bs = [
-        process(root, split, row) for iden, row in tqdm(annotations[split].items())
+        process(dataset_root, split, row) for iden, row in tqdm(annotations[split].items())
     ]
 
     dataframe = pd.DataFrame(

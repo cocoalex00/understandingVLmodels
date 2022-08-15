@@ -10,11 +10,11 @@ class Places365(PlacesDatasetBase):
         self.split = split
 
         if split == "train":
-            names = ["places_train_alexsplit"]
+            names = ["places_train"]
         elif split == "val":
             names = ["places_val"]
         elif split == "test":
-            names = ["places_test_alexsplit"]
+            names = ["places_test"]
 
         super().__init__(
             data_dir=datadir,

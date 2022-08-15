@@ -101,13 +101,13 @@ def main(_config):
 
     parser.add_argument(
         "--pretrained",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
         type=str,
         help="Path to the checkpoint file containing the model's weights and stuff",
     )
     parser.add_argument(
         "--data_path",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities",
+        default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
         type=str,
         help="Path to the folder where the dataset file (.arrow) lives",
     )
@@ -120,13 +120,13 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/imgClf/out",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/out",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/imgClf/checkpoints",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpoints",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
@@ -139,7 +139,7 @@ def main(_config):
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=6,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -165,6 +165,7 @@ def main(_config):
     # Get all arguments 
     args = parser.parse_args()
 
+    print("sape")
 
 
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
@@ -177,7 +178,7 @@ def main(_config):
 
 
     # CUDA check 
-    device = torch.device(f"cuda:{torch.cuda.current_device()}" if torch.cuda.is_available() else "cpu") 
+    device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu") 
     n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
 
 
@@ -266,8 +267,8 @@ def main(_config):
     # Data paralellization in multiple gpus if more than one is available (only in one node, multiple is too hard f***)
     if n_gpu > 1:
         device = torch.device("cuda")
-        model = nn.DataParallel(model)
         model.to(device)
+        model = nn.DataParallel(model)
         print("Data parallelization activated")
     else:
         model.to(device)
@@ -347,12 +348,14 @@ def main(_config):
             for j, batch in enumerate(trainDL):
                 optimizer.zero_grad()           # Clear gradients of the optimizer
 
-                label = torch.tensor(batch["label"]).to(device).squeeze()
+                label = torch.tensor(batch["label"]).to("cuda").squeeze()
+
                 for i in batch.keys():
                     if type(batch[i]) != list:
-                        batch[i] = batch[i].to(device)
+                        batch[i] = batch[i].to("cuda")
 
-                batch["image"] = [batch["image"][0].to(device)]
+                batch["image"] = [batch["image"][0].to("cuda")]
+                
             
 
                 # Data related stufi
@@ -404,12 +407,12 @@ def main(_config):
 
                 # Data related stuff
             
-                label = torch.tensor(batch["label"]).to(device).squeeze()
+                label = torch.tensor(batch["label"]).to("cuda").squeeze()
                 for i in batch.keys():
                     if type(batch[i]) != list:
-                        batch[i] = batch[i].to(device)
+                        batch[i] = batch[i].to("cuda")
 
-                batch["image"] = [batch["image"][0].to(device)]
+                batch["image"] = [batch["image"][0].to("cuda")]
 
 
 
