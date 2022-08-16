@@ -131,16 +131,15 @@ def main(_config):
 
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
-
     parser.add_argument(
         "--pretrained",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
         type=str,
         help="Path to the checkpoint file containing the model's weights and stuff",
     )
     parser.add_argument(
         "--data_path",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities",
+        default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
         type=str,
         help="Path to the folder where the dataset file (.arrow) lives",
     )
@@ -153,20 +152,20 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/imgClf/out",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outepochs",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/imgClf/checkpoints",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsepochs",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=32,
+        default=33,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
@@ -185,7 +184,7 @@ def main(_config):
     parser.add_argument(
         "--lr",
         type=int,
-        default=(3e-4),
+        default=(3e-3),
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -255,7 +254,6 @@ def main(_config):
         trainDL = DataLoader(
             dataset= trainDataset,
             batch_size= args.batch_size,
-            shuffle= True,
             pin_memory=True,
             collate_fn=collateTrain,
             sampler = trainsampler
@@ -263,7 +261,6 @@ def main(_config):
         valDL = DataLoader(
             dataset= valDataset,
             batch_size= args.batch_size,
-            shuffle= True,
             pin_memory=True,
             collate_fn= collateVal,
             sampler = valsampler
@@ -395,7 +392,7 @@ def main(_config):
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
@@ -468,7 +465,7 @@ def main(_config):
                     warmupScheduler.step() # update both lr schedulers 
 
                 if is_main_process() or not DISTRIBUTED:
-                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
+                    print(f"Epoch({epoch}) -> batch {j}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
 
 
             # Calculate the avg loss of the training epoch and append it to list 
