@@ -120,13 +120,13 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/out",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outepochs",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpoints",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsepochs",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
@@ -139,7 +139,7 @@ def main(_config):
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=6,
+        default=10,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -152,7 +152,7 @@ def main(_config):
     parser.add_argument(
         "--lr",
         type=int,
-        default=(3e-4),
+        default=(3e-3),
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
