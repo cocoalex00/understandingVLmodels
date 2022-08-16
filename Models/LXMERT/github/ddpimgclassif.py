@@ -1,14 +1,17 @@
 # Copyright (c) Alejandro Hernandez Diaz.
 
-# This source code implements the training script to fine-tune the adapted ALBEF model to image classification.
+# This source code implements the training script to fine-tune the adapted LXMERT model to image classification.
 
 # imports 
-from selectors import EpollSelector
-import matplotlib.pyplot as plt
-import torch
+import enum
 import matplotlib
 matplotlib.use("pdf")
-import traceback 
+import matplotlib.pyplot as plt
+import torch
+
+from src.tasks.places_data import PlacesDataset, PlacesTorchDataset
+from torch.utils.data import DataLoader
+from src.tasks.imgclassif_model import imgClassifModel
 
 import csv
 import signal
@@ -19,20 +22,13 @@ import numpy as np
 import random 
 from tqdm import tqdm
 import argparse
-import yaml
-import utils
-from dataset import create_sampler,create_loader
+
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 
 from distribuido import setup_for_distributed, save_on_master, is_main_process
 
-
-
-from torch.utils.data import DataLoader
-from transformers import  get_linear_schedule_with_warmup, BertTokenizer
-from dataset.places_dataset import places365
-from models.model_imgclf import ALBEF
+from transformers import  get_linear_schedule_with_warmup
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     ReduceLROnPlateau
@@ -44,8 +40,6 @@ try:
 except ModuleNotFoundError:
     APEX_AVAILABLE = False
 
-gpu_list = "0,1,2,3"
-os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 
 def init_distributed():
     # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
@@ -56,7 +50,7 @@ def init_distributed():
     world_size = int(os.environ['WORLD_SIZE'])
     local_rank = int(os.environ['LOCAL_RANK'])
     dist.init_process_group(
-            backend="nccl",
+            backend="gloo",
             init_method=dist_url,
             world_size=world_size,
             rank=rank)
@@ -95,10 +89,11 @@ def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_che
     # Save to checkpoint file, use different name for final checkpoint #
     if not os.path.exists(folder_path + "/"):
         os.makedirs(folder_path+"/")
+    # Save to checkpoint file, use different name for final checkpoint #
     if final:
-        torch.save(obj=checkpoint, f=f"{folder_path}/ALBEFFineTuned.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/LXMERTFineTuned.pth")
     else:
-        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointALBEF.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointLXMERT.pth")
     print("--Checkpoint saved--")
 
 
@@ -114,8 +109,6 @@ def sigterm_handler(signal,frame):
 
 
 
-
-
 #### Main Script ###
 def main():
     n_gpu = torch.cuda.device_count() 
@@ -127,53 +120,45 @@ def main():
     else:
         DISTRIBUTED = False
 
-    
-    # initialise the sigterm handler
-    signal.signal(signal.SIGTERM, sigterm_handler)
-
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--pretrained",
+        "--from_pretrained",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
-        help="Path to the pth file that contains the model's checkpoint"
+        help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part"
+    )
+    #### Annotations and TSV files 
+    parser.add_argument(
+        "--annotTrain",
+        type=str,
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
+        help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--local_rank",
         type=int
     )
     parser.add_argument(
-        "--config",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
-        help="Path to the config file for the task and model"
-    )
-    parser.add_argument(
-        "--annotTrain",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
-        help="Path to the jsonline file containing the annotations of the dataset"
-    )
-    parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
-        "--root_train",
+        "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256",
-        help="Path to the images of the dataset (train)"
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
-        "--root_val",
+        "--tsv_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256",
-        help="Path to the images of the dataset (validation)"
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        help="Path to the tsv file containing the features of the dataset (validation)"
     )
+    ####
     parser.add_argument(
         "--num_labels",
         default=365,
@@ -182,13 +167,13 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ALBEF/imgClf/out",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/imgClf/out",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ALBEF/imgClf/checkpoints",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/imgClf/checkpoints",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
@@ -201,7 +186,7 @@ def main():
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=2,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -214,7 +199,7 @@ def main():
     parser.add_argument(
         "--lr",
         type=int,
-        default=3e-3,
+        default=3e-4,
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -227,8 +212,7 @@ def main():
     # Get all arguments 
     args = parser.parse_args()
 
-    # load the config file
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+
 
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
     torch.manual_seed(args.seed)
@@ -237,29 +221,23 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False          # This may allow training on the newer gpus idk
 
+
     # CUDA check 
     if dist.is_available() and dist.is_initialized():
         device = "cuda:" + str(dist.get_rank())
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 
-    n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
-
     if is_main_process() or not DISTRIBUTED:
         print("the device being used is: " + str(device))
         print("number of gpus available: " + str(n_gpu))
         print(f"Using mixed precision training: {APEX_AVAILABLE}")
 
-    # if n_gpu > 1: 
-    #     args.batch_size = args.batch_size * n_gpu   # Augment batch size if more than one gpu is available
-
-    
-    #################################################### Dataset ##################################################################
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the dataset ##")
 
-    trainDataset = places365(args.annotTrain, args.root_train)
-    valDataset = places365(args.annotVal, args.root_val)
+    trainDataset = PlacesTorchDataset(PlacesDataset(args.annotTrain, args.tsv_train))
+    valDataset = PlacesTorchDataset(PlacesDataset(args.annotVal, args.tsv_val))
 
     if DISTRIBUTED:
         trainsampler = DistributedSampler(dataset=trainDataset, shuffle=True)   
@@ -302,53 +280,14 @@ def main():
     # Load the Model
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the Model ##")
-
-    
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = ALBEF(config=config, text_encoder="bert-base-uncased", num_labels = args.num_labels)
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased") 
-
-
-
-    ##################################################### Checkpoint or pre-trained ###################################################
-    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth")):
-        if is_main_process() or not DISTRIBUTED:
-            print(f"Checkpoint found, loading")
-
-        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointALBEF.pth"), map_location=device)
-        start_epoch = checkpoint['current_epoch']
-        learningRate = checkpoint['lr']
-        trainingLoss = checkpoint['Tloss']
-        valLoss = checkpoint['Vloss']
-
-        # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
-        if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
-        else:
-            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
-        optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
-        warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
-        reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
-
-        if is_main_process() or not DISTRIBUTED:
-            print("Checkpoint loaded")
-    else:
-        if is_main_process() or not DISTRIBUTED:
-            print("No checkpoint found, starting fine tunning from base pre-trained model")
-        # Load pretrained checkpoint
-        ckpt = torch.load(args.pretrained,map_location=device)
-        model.load_state_dict(ckpt["model"], strict= False)
-        del ckpt
-
-
-
-
-    # Only train the last classifiers
-    for name, param in model.named_parameters():
-        if "cls_head" not in name:
-            param.requires_grad_(False)
+    model = imgClassifModel(args.num_labels)
+    model.lxrt_encoder.load(args.from_pretrained,device) # load encoder's weight
+    # Only train the last classifier
+    model.lxrt_encoder.requires_grad_(False)
 
     
+
     if is_main_process() or not DISTRIBUTED:
         print("## Model Loaded ##")
 
@@ -371,14 +310,15 @@ def main():
     learningrate = np.sqrt(n_gpu) * args.lr
     optimizer = AdamW(model.parameters(), learningrate)
     # Create gradient scaler for f16 precision
-    scaler = amp.GradScaler(enabled=True)
+    scaler = amp.GradScaler()
 
     # learning rate schedulers 
     reducelrScheduler = ReduceLROnPlateau(
             optimizer, mode="max", factor=0.2, patience=1, cooldown=1, threshold=0.001
         )
+
     totalSteps = len(trainDL) * args.num_epochs
-    warmupSteps = int(totalSteps * args.warmup_proportion)                            # Calculate the number of epochs to warm up for
+    warmupSteps = int(totalSteps * args.warmup_proportion)                         # Calculate the number of epochs to warm up for
     warmupScheduler = get_linear_schedule_with_warmup(optimizer= optimizer,
                                                     num_warmup_steps= warmupSteps,
                                                     num_training_steps = totalSteps
@@ -394,16 +334,65 @@ def main():
     start_epoch = 0
 
 
+    # # Check for available checkpoints 
+    # if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointLXMERT.pth")):
+    #     print(f"Checkpoint found, loading")
+    #     checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointLXMERT.pth"))
+    #     start_epoch = checkpoint['current_epoch']
+    #     learningRate = checkpoint['lr']
+    #     trainingLoss = checkpoint['Tloss']
+    #     valLoss = checkpoint['Vloss']
+
+    #     # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+    #     if isinstance(model, nn.DataParallel):
+    #         model.module.load_state_dict(checkpoint['model_checkpoint'])
+    #     else:
+    #         model.load_state_dict(checkpoint['model_checkpoint'])
+    #     optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+    #     warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+    #     reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
+
+
+    #     print("Checkpoint loaded")
+    # else:
+    #     print("No checkpoint found, starting fine tunning from base pre-trained model")
+
+        ##################################################### Checkpoint or pre-trained ###################################################
+    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointLXMERT.pth")):
+        if is_main_process() or not DISTRIBUTED:
+            print(f"Checkpoint found, loading")
+
+        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointLXMERT.pth"), map_location=device)
+        start_epoch = checkpoint['current_epoch']
+        learningRate = checkpoint['lr']
+        trainingLoss = checkpoint['Tloss']
+        valLoss = checkpoint['Vloss']
+
+        # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+        if DISTRIBUTED:
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+        else:
+            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
+        optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+        warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+        reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
+
+        if is_main_process() or not DISTRIBUTED:
+            print("Checkpoint loaded")
+    else:
+        if is_main_process() or not DISTRIBUTED:
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
+
+
 
     # Progress bars
     pbarTrain = tqdm(range(start_epoch, args.num_epochs))
 
-    ######################################################### Training loop ############################################################
-
-    
-    print("***** Running training *****")
-    print(f"  Num epochs left: {args.num_epochs - start_epoch}/{ args.num_epochs}")
-    print("  Batch size: ", args.batch_size)
+    # Training loop ####################################################################################################################################
+    if is_main_process() or not DISTRIBUTED:
+        print("***** Running training *****")
+        print(f"  Num epochs left: {args.num_epochs - start_epoch}/{ args.num_epochs}")
+        print("  Batch size: ", args.batch_size)
 
     # Wrap the training loop in a try, finally block to properly catch the sigterm signal
     try:
@@ -411,7 +400,6 @@ def main():
             ########################################### Training  #####################################################
 
             model.train() # Get model in training mode
-            print(len(trainDataset))
 
             running_loss_train = 0 # Keep track of avg loss for each epoch (train)
             for i, batch in enumerate(trainDL):
@@ -419,24 +407,26 @@ def main():
             
 
                 # Data related stuff
-                image, text, label = batch
-                text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
-                image, label = image.to(device), label.to(device) 
-                
+                txt, imgfeats, boxes, labels, objectsid, img_id = batch
+                imgfeats, boxes=  imgfeats.cuda(), boxes.cuda()
+
+                labelsTensor = torch.tensor([t.type(torch.LongTensor)for t in labels], device=device)
 
 
                 ### Forward pass ###
                 with amp.autocast(): # Cast from f32 to f16 
-                    output = model(image,text_inputs)
+                    outputs = model(imgfeats,boxes,txt)
 
                     # Calculate batch loss
-                    loss = criterion(output,label)
+                    loss = criterion(outputs,labelsTensor)
                 # Add batch loss to list
                 lossitem = loss.detach()
                 dist.all_reduce(lossitem)
                 lossitem = lossitem.item()/n_gpu
                 running_loss_train += lossitem
 
+                
+                
                 ### Backward pass ###
                 scaler.scale(loss).backward()       # Run backward pass with scaled graients
                 scaler.step(optimizer)              # Run an optimizer step
@@ -448,24 +438,22 @@ def main():
                 learningRate.append(optimizer.param_groups[0]['lr'])
                 
                 if not skip_lr_schedule:
-                   warmupScheduler.step() # update both lr schedulers 
-
-            
-
+                    warmupScheduler.step() 
+                
                 if is_main_process() or not DISTRIBUTED:
                     print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
-
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
-
+            	
+            
             if is_main_process() or not DISTRIBUTED:
                 print(f"epoch loss: {epochLoss}")
 
             
             if DISTRIBUTED:
-                    # wait for all gpus to get to here before saving
+                # wait for all gpus to get to here before saving
                 dist.barrier()
             
             ########################################### Checkpoint every epoch ##########################################
@@ -476,46 +464,44 @@ def main():
                     model_checkpoint = model.state_dict()
                 save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
 
-            ########################################### Validation  #####################################################
-
             model.eval() # Get model in eval mode
 
             running_loss_val = 0 # Keep track of avg loss for each epoch (val)
             for i, batch in enumerate(valDL):
 
-                 # Data related stuff
-                image, _, label = batch
-                image, label = image.to(device), label.to(device) 
-                #ext_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  # Tokenize sentence
+                # Data related stuff
+                txt, imgfeats, boxes, labels, objectsid, img_id = batch
+                imgfeats, boxes =  imgfeats.cuda(), boxes.cuda()
+
+                labelsTensor = torch.tensor([t.type(torch.LongTensor)for t in labels], device=device)
 
 
                 ### Forward pass ###
                 with amp.autocast(): # Cast from f32 to f16 
-                    output = model(image,text_inputs)
-
+                    outputs = model(imgfeats,boxes,txt)
+                
                     # Calculate batch loss
-                    loss = criterion(output,label)
+                    loss = criterion(outputs,labelsTensor)
                 # Add loss to list (val)
                 lossitem = loss.detach()
                 dist.all_reduce(lossitem)
                 lossitem = lossitem.item()/n_gpu
                 running_loss_val += lossitem
-
+                
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
 
-            reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
+            reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
+            
+            
             # Update the progress bar 
             if is_main_process() or not DISTRIBUTED:
                 pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
-    
-    
-    ############################################ Do when exception happens (eg sigterm) #############################################
-    except :
-        traceback.print_exc()
+    except Exception as e:
         # when sigterm caught, save checkpoint and exit
+        print(e)
         if DISTRIBUTED:
                 # wait for all gpus to get to here before saving
             dist.barrier()
@@ -551,7 +537,6 @@ def main():
         plt.xlabel("Epochs")
         plt.ylabel("Learning Rate")
         plt.legend()
-    
         plt.savefig(f"{args.output_dir}/learningRate.png")
 
         # Combined loss 
@@ -579,8 +564,8 @@ def main():
         plt.legend()
         plt.savefig(f"{args.output_dir}/ValLoss.png")
 
-        # Also save the lists and stats in a csv to create other plots if needed
-        with open(f"{args.output_dir}/ALBEFlists.csv", "w") as f:
+        # Also save the lists and stats in a csv to create other plots if needed 
+        with open(f"{args.output_dir}/LXMERTlists.csv", "w") as f:
             write = csv.writer(f)
             write.writerow(["Learning rate over the epochs:"])
             write.writerow(learningRate)

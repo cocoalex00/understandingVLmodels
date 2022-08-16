@@ -124,10 +124,10 @@ class LXRTEncoder(nn.Module):
         torch.save(self.model.state_dict(),
                    os.path.join("%s_LXRT.pth" % path))
 
-    def load(self, path):
+    def load(self, path,device):
         # Load state_dict from snapshot file
         print("Load LXMERT pre-trained model from %s" % path)
-        state_dict = torch.load("%s_LXRT.pth" % path)
+        state_dict = torch.load("%s_LXRT.pth" % path, map_location=device)
         new_state_dict = {}
         for key, value in state_dict.items():
             if key.startswith("module."):

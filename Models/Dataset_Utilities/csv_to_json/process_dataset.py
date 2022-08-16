@@ -25,7 +25,7 @@ def _load_dataset(annotations_path,split="train"):
     """
     df = pd.read_csv(annotations_path, sep=" ", header=None)
     count = 0
-    rootpathtrain = "/vol/teaching/HernandezDiazProject/Data/Places365/trainshmol/data_256"
+    rootpathtrain = "/mnt/fast/nobackup/scratch4weeks/ah02299/trainshmol/data_256"
     rootpathval = "/vol/teaching/HernandezDiazProject/Data/Places365/val_256/"
     rootpathtest = "/vol/teaching/HernandezDiazProject/Data/Places365/test_256"
     newdata = []

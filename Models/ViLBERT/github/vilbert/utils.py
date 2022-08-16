@@ -828,7 +828,7 @@ class PreTrainedModel(nn.Module):
         torch.save(model_to_save.state_dict(), output_model_file)
 
     @classmethod
-    def from_pretrained(cls, pretrained_model_name_or_path, *model_args, **kwargs):
+    def from_pretrained(cls, pretrained_model_name_or_path,device, *model_args, **kwargs):
         r"""Instantiate a pretrained pytorch model from a pre-trained model configuration.
         The model is set in evaluation mode by default using ``model.eval()`` (Dropout modules are deactivated)
         To train the model, you should first set it back in training mode with ``model.train()``
@@ -932,10 +932,10 @@ class PreTrainedModel(nn.Module):
                 )
 
         # Instantiate model.
-        model = cls(config, *model_args, **model_kwargs)
+        model = cls(config, *model_args, **model_kwargs).to(device)
 
         if state_dict is None and not from_tf:
-            state_dict = torch.load(resolved_archive_file, map_location="cpu")
+            state_dict = torch.load(resolved_archive_file, map_location=device)
         if from_tf:
             # Directly load from a TensorFlow checkpoint
             return cls.load_tf_weights(
