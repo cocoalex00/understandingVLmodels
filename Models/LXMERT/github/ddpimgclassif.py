@@ -325,10 +325,9 @@ def main():
                                                     )
     
 
-
-
-    # Lists to keep track of nice stuff like loss and lr 
     trainingLoss = []
+    accuracyTrain = []
+    valAccuracy = []
     valLoss = []
     learningRate = []
     start_epoch = 0
@@ -402,6 +401,7 @@ def main():
             model.train() # Get model in training mode
 
             running_loss_train = 0 # Keep track of avg loss for each epoch (train)
+            accuracy_running = 0
             for i, batch in enumerate(trainDL):
                 optimizer.zero_grad()               # Clear gradients of the optimizer
             
@@ -439,13 +439,27 @@ def main():
                 
                 if not skip_lr_schedule:
                     warmupScheduler.step() 
+
+                
+                top1 = torch.topk(outputs,1)[1].squeeze(1)
+                corrects = (torch.eq(top1,labelsTensor).sum() / len(labelsTensor)).detach()
+                
+                accuracyitem = corrects.item()
+                accuracy_running +=accuracyitem
+
                 
                 if is_main_process() or not DISTRIBUTED:
-                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
+                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, accuracy: {accuracyitem},  learning rate {optimizer.param_groups[0]['lr']}")
+
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
+
+            dist.all_reduce(accuracy_running)
+            accuracy_running = accuracy_running / n_gpu
+            epochAccuracy = accuracy_running/len(trainDL)
+            accuracyTrain.append(epochAccuracy)
             	
             
             if is_main_process() or not DISTRIBUTED:
@@ -467,6 +481,7 @@ def main():
             model.eval() # Get model in eval mode
 
             running_loss_val = 0 # Keep track of avg loss for each epoch (val)
+            accuracy_running_val = 0 
             for i, batch in enumerate(valDL):
 
                 # Data related stuff
@@ -487,10 +502,21 @@ def main():
                 dist.all_reduce(lossitem)
                 lossitem = lossitem.item()/n_gpu
                 running_loss_val += lossitem
+
+                top1 = torch.topk(outputs,1)[1].squeeze(1)
+                correctsval = (torch.eq(top1,labelsTensor).sum() / len(labelsTensor)).detach()
+
+                accuracyitem = correctsval.item()
+                accuracy_running_val +=accuracyitem
                 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
+            dist.all_reduce(accuracy_running_val)
+            accuracy_running_val = accuracy_running_val / n_gpu
+            accuracyEpochVal = accuracy_running_val/len(valDL)
+            valAccuracy.append(accuracyEpochVal)
+            
 
 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
@@ -573,6 +599,10 @@ def main():
             write.writerow(trainingLoss)
             write.writerow(["Validation loss over the epochs:"])
             write.writerow(valLoss)
+            write.writerow(["Training acc over the epochs:"])
+            write.writerow(accuracyTrain)
+            write.writerow(["Validation acc over the epochs:"])
+            write.writerow(valAccuracy)
             write.writerow(["--- stats ---"])
             write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
             write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
