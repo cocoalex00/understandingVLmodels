@@ -444,7 +444,7 @@ def main():
                 top1 = torch.topk(outputs,1)[1].squeeze(1)
                 corrects = (torch.eq(top1,labelsTensor).sum() / len(labelsTensor)).detach()
                 
-                accuracyitem = corrects.item()
+                accuracyitem = corrects
                 accuracy_running +=accuracyitem
 
                 
@@ -457,7 +457,7 @@ def main():
             trainingLoss.append(epochLoss)
 
             dist.all_reduce(accuracy_running)
-            accuracy_running = accuracy_running / n_gpu
+            accuracy_running = accuracy_running.item() / n_gpu
             epochAccuracy = accuracy_running/len(trainDL)
             accuracyTrain.append(epochAccuracy)
             	
@@ -506,14 +506,14 @@ def main():
                 top1 = torch.topk(outputs,1)[1].squeeze(1)
                 correctsval = (torch.eq(top1,labelsTensor).sum() / len(labelsTensor)).detach()
 
-                accuracyitem = correctsval.item()
+                accuracyitem = correctsval
                 accuracy_running_val +=accuracyitem
                 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
             dist.all_reduce(accuracy_running_val)
-            accuracy_running_val = accuracy_running_val / n_gpu
+            accuracy_running_val = accuracy_running_val.item() / n_gpu
             accuracyEpochVal = accuracy_running_val/len(valDL)
             valAccuracy.append(accuracyEpochVal)
             

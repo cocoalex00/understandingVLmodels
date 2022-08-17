@@ -498,7 +498,7 @@ def main():
                  # Data related stuff
                 image, _, label = batch
                 image, label = image.to(device), label.to(device) 
-                #ext_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  # Tokenize sentence
+                text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  # Tokenize sentence
 
 
                 ### Forward pass ###
