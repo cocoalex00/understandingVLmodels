@@ -21,7 +21,7 @@ import numpy as np
 import random 
 from tqdm import tqdm
 import argparse
-from pretrain.function.config import config, update_config
+from places.function.config import config, update_config
 
 from places.modules.resnet_vlbert_for_image_classification import ResNetVLBERT
 from places.datasets.Places import Places
@@ -163,7 +163,7 @@ def main():
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=20,
+        default=100,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -176,7 +176,7 @@ def main():
     parser.add_argument(
         "--lr",
         type=int,
-        default=7.0e-2,
+        default= 0.0002,
         help="The base learning rate to be used with the optimizer (default =0.00002)"
     )
     parser.add_argument(
@@ -245,11 +245,20 @@ def main():
     print("## Loading the Model ##")
     # Load the model and freeze everything up to the last linear layers (Image classifier)
     model = ResNetVLBERT(config)
-    model.init_weight()  # load madel's weight, the path to the pre-trained weights is in the yaml file so change it to the correct one for HTCONDOR!!!!
+    #model.init_weight()  # load madel's weight, the path to the pre-trained weights is in the yaml file so change it to the correct one for HTCONDOR!!!!
     # Only train the last classifier
     model.image_feature_extractor.requires_grad_(False)
-    model.vlbert.requires_grad_(False)
+    #model.vlbert.requires_grad_(False)
     model.object_linguistic_embeddings.requires_grad_(False)
+
+    #model.vlbert.requires_grad_(False)
+    # for name, param in model.named_parameters():s
+    #     if "final" not in name:
+    #         param.requires_grad_(False)
+
+    for name, param in model.named_parameters():
+        if param.requires_grad == True:
+            print(name)
 
     
 
@@ -266,7 +275,8 @@ def main():
 
     # Loss fnc and optimizer
     criterion = CrossEntropyLoss()
-    optimizer = AdamW(model.parameters(), args.lr)
+    #optimizer = AdamW(model.parameters(), args.lr)
+    optimizer = torch.optim.SGD(model.parameters(),7e-3)
     # Create gradient scaler for f16 precision
     scaler = amp.GradScaler()
 
@@ -274,12 +284,12 @@ def main():
     reducelrScheduler = ReduceLROnPlateau(
             optimizer, mode="max", factor=0.2, patience=1, cooldown=1, threshold=0.001
         )
-    totalSteps = len(trainDL) * args.num_epochs
-    warmupSteps = int(totalSteps * args.warmup_proportion)                            # Calculate the number of epochs to warm up for
-    warmupScheduler = get_linear_schedule_with_warmup(optimizer= optimizer,
-                                                    num_warmup_steps= warmupSteps,
-                                                    num_training_steps = totalSteps
-                                                    )
+    # totalSteps = len(trainDL) * args.num_epochs
+    # warmupSteps = int(totalSteps * args.warmup_proportion)                            # Calculate the number of epochs to warm up for
+    # warmupScheduler = get_linear_schedule_with_warmup(optimizer= optimizer,
+    #                                                 num_warmup_steps= warmupSteps,
+    #                                                 num_training_steps = totalSteps
+    #                                                 )
 
 
 
@@ -314,18 +324,27 @@ def main():
         print("No checkpoint found, starting fine tunning from base pre-trained model")
 
     batch = next(iter(trainDL))
+
+    print(batch)
+
+   # sys.exit(1)
+
+    
     
     # Data related stuff
     boxes, im_info, text_ids, label  = batch
 
-    print(batch)
-    print(text_ids)
-    text_ids = torch.stack(text_ids)
-    print(text_ids)
-    text_ids = torch.permute(text_ids, (1, 0))
+    print(boxes)
+
+    #print(boxes[0]==boxes[1])
+
+    #sys.exit(0)
+    #print(batch)
+    #print(text_ids)
+    #sys.exit(1)
 
     boxes, im_info, text_ids, label  = boxes.to(device), im_info.to(device), text_ids.to(device), label.to(device)  
-
+    boxes1, im_info1, text_ids1, label1  = boxes.to(device), im_info.to(device), text_ids.to(device), label.to(device) 
     # Progress bars
     pbarTrain = tqdm(range(start_epoch, args.num_epochs))
 
@@ -343,42 +362,61 @@ def main():
             model.train() # Get model in training mode
 
             running_loss_train = 0 # Keep track of avg loss for each epoch (train)
-            for i, batch in enumerate(trainDL):
-                optimizer.zero_grad()               # Clear gradients of the optimizer
+            for i, batch1 in enumerate(trainDL):
+                optimizer.zero_grad()    
+                    # Clear gradients of the optimizer
             
 
+                #print(boxes == boxes1)
                 # # Data related stuff
                 # boxes, im_info, text_ids, label  = batch
                 # text_ids = torch.stack(text_ids)
                 # text_ids = torch.permute(text_ids, (1, 0))
 
                 # boxes, im_info, text_ids, label  = boxes.to(device), im_info.to(device), text_ids.to(device), label.to(device)  
-
-
-
+                #print(label)
+                
 
                 ### Forward pass ###
-                with amp.autocast(): # Cast from f32 to f16 
-                    outputs = model.train_forward(None, boxes, im_info, text_ids)
+                #with amp.autocast(): # Cast from f32 to f16 
+                outputs = model.train_forward(None, boxes, im_info, text_ids)
 
-                    # Calculate batch loss
-                    loss = criterion(outputs[1],label)
+                #print(outputs.shape)
+                #print(label.shape)
+
+                # Calculate batch loss
+                loss = criterion(outputs,label)
+
                 # Add loss to list
                 running_loss_train += loss.item()
                 
+                loss.backward()#
+                optimizer.step()
                 
-                ### Backward pass ###
-                scaler.scale(loss).backward()       # Run backward pass with scaled graients
-                scaler.step(optimizer)              # Run an optimizer step
-                scale = scaler.get_scale()
-                scaler.update()
+                # ### Backward pass ###
+                # scaler.scale(loss).backward()       # Run backward pass with scaled graients
+                # scaler.step(optimizer)              # Run an optimizer step
+                # scale = scaler.get_scale()
+                # scaler.update()
 
-                skip_lr_schedule = (scale > scaler.get_scale()) 
-                            # # Append learning rate to list 
-                learningRate.append(optimizer.param_groups[0]['lr'])
+                # skip_lr_schedule = (scale > scaler.get_scale()) 
+                #             # # Append learning rate to list 
+                # learningRate.append(optimizer.param_groups[0]['lr'])
                 
-                if not skip_lr_schedule:
-                   warmupScheduler.step() # update both lr schedulers 
+                # if not skip_lr_schedule:
+                #warmupScheduler.step() # update both lr schedulers 
+
+                top1 = torch.topk(outputs,1)[1].squeeze(1)
+
+                #print(outputs[0]) 
+                #print(outputs[1])
+                #corrects = (torch.eq(top1,label).sum() / len(label)).detach()
+
+
+                # print(corrects)
+                # print(label)
+                # print(top1)
+
 
                 print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
 
@@ -386,7 +424,7 @@ def main():
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
-
+            print(f"Epoch loss ({epochLoss})")
 
 
             ########################################### Validation  #####################################################

@@ -152,13 +152,13 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outepochs",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outfull",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsepochs",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsfull",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
@@ -171,7 +171,7 @@ def main(_config):
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=50,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -306,7 +306,7 @@ def main(_config):
     ckpt = torch.load(args.pretrained,map_location=device)
     model.load_state_dict(ckpt["state_dict"], strict=False) # Not all the layers are included in the state dict (I added some)
 
-    # Only train the last classifiers
+    # # Only train the last classifiers
     for name, param in model.named_parameters():
         if "img_classifier" not in name:
             param.requires_grad_(False)
@@ -351,6 +351,8 @@ def main(_config):
 
     # Lists to keep track of nice stuff like loss and lr 
     trainingLoss = []
+    accuracyTrain = []
+    valAccuracy = []
     valLoss = []
     learningRate = []
     start_epoch = 0
@@ -425,6 +427,7 @@ def main(_config):
             model.train() # Get model in training mode
 
             running_loss_train = 0 # Keep track of avg loss for each epoch (train)
+            accuracy_running = 0
             for j, batch in enumerate(trainDL):
                 optimizer.zero_grad()           # Clear gradients of the optimizer
 
@@ -464,12 +467,23 @@ def main(_config):
                 if not skip_lr_schedule:
                     warmupScheduler.step() # update both lr schedulers 
 
+                top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
+                corrects = (torch.eq(top1,label).sum() / len(label)).detach()
+                
+                accuracyitem = corrects.item()
+                accuracy_running +=accuracyitem
+
                 if is_main_process() or not DISTRIBUTED:
-                    print(f"Epoch({epoch}) -> batch {j}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
+                    print(f"Epoch({epoch}) -> batch {j}, loss: {lossitem}, accuracy: {accuracyitem},  learning rate {optimizer.param_groups[0]['lr']}")
 
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
+            dist.all_reduce(accuracy_running)
+            accuracy_running = accuracy_running / n_gpu
+            epochAccuracy = accuracy_running/len(trainDL)
+            accuracyTrain.append(epochAccuracy)
+
             trainingLoss.append(epochLoss)
 
             
@@ -496,6 +510,7 @@ def main(_config):
             model.eval() # Get model in eval mode
 
             running_loss_val = 0 # Keep track of avg loss for each epoch (val)
+            accuracy_running_val = 0 
             for j, batch in enumerate(valDL):
 
                 # Data related stuff
@@ -522,10 +537,20 @@ def main(_config):
                 lossitem = lossitem.item()/n_gpu
                 running_loss_val += lossitem
 
+                top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
+                correctsval = (torch.eq(top1,label).sum() / len(label)).detach()
+
+                accuracyitem = correctsval.item()
+                accuracy_running_val +=accuracyitem
+
 
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
+            dist.all_reduce(accuracy_running_val)
+            accuracy_running_val = accuracy_running_val / n_gpu
+            accuracyEpochVal = accuracy_running_val/len(valDL)
+            valAccuracy.append(accuracyEpochVal)
 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
@@ -606,6 +631,10 @@ def main(_config):
             write.writerow(trainingLoss)
             write.writerow(["Validation loss over the epochs:"])
             write.writerow(valLoss)
+            write.writerow(["Training acc over the epochs:"])
+            write.writerow(accuracyTrain)
+            write.writerow(["Validation acc over the epochs:"])
+            write.writerow(valAccuracy)
             write.writerow(["--- stats ---"])
             write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
             write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])

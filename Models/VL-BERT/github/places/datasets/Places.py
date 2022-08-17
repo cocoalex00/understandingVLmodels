@@ -152,7 +152,7 @@ class Places(Dataset):
                 boxes = data['num_boxes']
                 decode_config = [
                     ('objects_id', (boxes, ), np.int64),
-                    ('objects_conf', (boxes, ), np.float32),
+                    ('objects_conf', (boxes, -1), np.float32),
                     ('attrs_id', (boxes, ), np.int64),
                     ('attrs_conf', (boxes, ), np.float32),
                     ('boxes', (boxes, 4), np.float32),
@@ -171,17 +171,28 @@ class Places(Dataset):
         #visual_features = deepcopy(self.imgid2img[idb["img_name"]])
                 w0,h0 = data["img_w"], data["img_h"]
 
-                boxes_features = torch.as_tensor(data['features'], dtype=torch.float32).reshape((data['num_boxes'], -1))
+                boxes_features = data["features"]
 
-                boxes = torch.as_tensor(data['boxes'], dtype=torch.float32).reshape((data['num_boxes'], -1))
+                boxes = np.array(deepcopy(data['boxes']))
+
+        boxes_max_conf = data["objects_conf"].max(axis=1)
+
+        inds = np.argsort(boxes_max_conf)[::-1]
+
+        boxes_features = torch.as_tensor(boxes_features[inds])
+        boxes = boxes[inds]
+        boxes_cls_scores = data["objects_conf"][inds]
+        boxes = torch.as_tensor(boxes)
 
         # Add full image as box
-        image_box = torch.as_tensor([[0.0, 0.0, w0 - 1, h0 - 1]])
+        image_box = torch.as_tensor([[0.0, 0.0, w0 - 1.0, h0 - 1.0]])
         boxes = torch.cat((image_box, boxes), dim=0)
         image_box_feature = boxes_features.mean(0, keepdim=True)
         boxes_features = torch.cat((image_box_feature, boxes_features), dim=0)
 
-        im_info = torch.tensor([w0, h0, 1.0, 1.0])
+
+
+        im_info = torch.tensor([w0, h0, 1.0, 1.0, index])
 
 
         # clamp boxes
@@ -189,6 +200,8 @@ class Places(Dataset):
         h = im_info[1].item()
         boxes[:, [0, 2]] = boxes[:, [0, 2]].clamp(min=0, max=w - 1)
         boxes[:, [1, 3]] = boxes[:, [1, 3]].clamp(min=0, max=h - 1)
+
+        print(boxes.shape)
 
         # Pre-computed features mean no image
         # We have to do some weird checking in order for the paths to work 
@@ -211,8 +224,10 @@ class Places(Dataset):
         # Text input 
         text = "[CLS] [SEP]"
         q_retokens = self.tokenizer.tokenize(text)
-        q_ids = self.tokenizer.convert_tokens_to_ids(q_retokens)
-        print(q_ids)
+
+
+        q_ids = torch.as_tensor(self.tokenizer.convert_tokens_to_ids(q_retokens))
+  
 
 
 
@@ -220,6 +235,8 @@ class Places(Dataset):
 
         # concat box feature to box
         boxes = torch.cat((boxes, boxes_features), dim=-1)
+
+        
 
 
 

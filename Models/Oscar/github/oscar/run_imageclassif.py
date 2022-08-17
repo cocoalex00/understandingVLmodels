@@ -171,7 +171,26 @@ class Places365(Dataset):
                     data[key] = data[key].reshape(shape)
                     data[key].setflags(write=False)
 
-                img_feat = torch.tensor(data["features"], dtype = torch.long)
+                features = data["features"]
+
+
+                # Last 6 elements of the visual features are calculated here
+                boxcoordinates = data["boxes"]
+                imgwh = np.array([data['img_w'],data['img_h'],data['img_w'],data['img_h']], dtype=np.float32)
+
+                sapearray = boxcoordinates/imgwh
+
+                cuidao = np.hstack(( sapearray,np.array([sapearray[:,3]-sapearray[:,1], sapearray[:,2]-sapearray[:,0]]).T))
+
+                features = np.hstack((features,cuidao))
+
+                img_feat = torch.tensor(features, dtype = torch.long)
+
+                # print(data["boxes"])
+                # print("------------------------------------")
+                # print(data["boxes"].shape)
+                # print(data["features"].shape)
+                # print(data["boxes"][0])
                 #num_boxes = data["num_boxes"] 
                 #boxes = data["boxes"]      # Read image features
 

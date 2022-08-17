@@ -36,6 +36,7 @@ class ALBEF(nn.Module):
                   nn.LayerNorm(self.text_encoder.config.hidden_size,eps=1e-6),
                   nn.Linear(self.text_encoder.config.hidden_size, num_labels)
                 )
+        
 
         if self.distill:
             self.visual_encoder_m = VisionTransformer(

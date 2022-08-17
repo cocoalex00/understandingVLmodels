@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use("pdf")
 import matplotlib.pyplot as plt
 import torch
+import traceback
 
 import csv
 import signal
@@ -252,7 +253,7 @@ def main():
     # Load the Model
     print("## Loading the Model ##")
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = OscarForImageClassification(config)
+    model = OscarForImageClassification.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
     # Only train the last classifier
     model.bert.requires_grad_(False)
 
@@ -420,7 +421,7 @@ def main():
     
     
     except Exception as e:
-        print(repr(e))
+        traceback.print_exc()
         # when sigterm caught, save checkpoint and exit
         
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
