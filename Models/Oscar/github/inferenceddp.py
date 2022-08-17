@@ -1,14 +1,12 @@
 # Copyright (c) Alejandro Hernandez Diaz.
 
-# This source code implements the training script to fine-tune the adapted ALBEF model to image classification.
+# This source code implements the training script to fine-tune the adapted ViLBERT model to image classification.
 
 # imports 
-from selectors import EpollSelector
-import matplotlib.pyplot as plt
-import torch
 import matplotlib
 matplotlib.use("pdf")
-import traceback 
+import matplotlib.pyplot as plt
+import torch
 
 import csv
 import signal
@@ -19,20 +17,16 @@ import numpy as np
 import random 
 from tqdm import tqdm
 import argparse
-import yaml
-import utils
-from dataset import create_sampler,create_loader
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 
 from distribuido import setup_for_distributed, save_on_master, is_main_process
 
-
-
+from oscar.run_imageclassif import Places365, load_obj_tsv
 from torch.utils.data import DataLoader
-from transformers import  get_linear_schedule_with_warmup, BertTokenizer
-from dataset.places_dataset import places365
-from models.model_imgclf import ALBEF
+from transformers import  get_linear_schedule_with_warmup
+from pytorch_transformers import BertConfig, BertTokenizer
+from oscar.modeling.modeling_bert import OscarForImageClassification
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     ReduceLROnPlateau
@@ -43,29 +37,6 @@ try:
     APEX_AVAILABLE = True
 except ModuleNotFoundError:
     APEX_AVAILABLE = False
-
-gpu_list = "0,1,2,3"
-os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
-
-def init_distributed():
-    # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
-    dist_url = "env://" # default
-
-    # only works with torch.distributed.launch // torch.run
-    rank = int(os.environ["RANK"])
-    world_size = int(os.environ['WORLD_SIZE'])
-    local_rank = int(os.environ['LOCAL_RANK'])
-    dist.init_process_group(
-            backend="nccl",
-            init_method=dist_url,
-            world_size=world_size,
-            rank=rank)
-
-    # this will make all .cuda() calls work properly
-    torch.cuda.set_device(local_rank)
-
-    # synchronizes all the threads to reach this point before moving on
-    dist.barrier()
 
 
 
@@ -96,12 +67,34 @@ def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_che
     if not os.path.exists(folder_path + "/"):
         os.makedirs(folder_path+"/")
     if final:
-        torch.save(obj=checkpoint, f=f"{folder_path}/ALBEFFineTuned.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/OscarFineTuned.pth")
     else:
-        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointALBEF.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointOscar.pth")
     print("--Checkpoint saved--")
 
 
+
+
+
+def init_distributed():
+    # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
+    dist_url = "env://" # default
+
+    # only works with torch.distributed.launch // torch.run
+    rank = int(os.environ["RANK"])
+    world_size = int(os.environ['WORLD_SIZE'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    dist.init_process_group(
+            backend="nccl",
+            init_method=dist_url,
+            world_size=world_size,
+            rank=rank)
+
+    # this will make all .cuda() calls work properly
+    torch.cuda.set_device(local_rank)
+
+    # synchronizes all the threads to reach this point before moving on
+    dist.barrier()
 
 # For HTCondor
 def sigterm_handler(signal,frame):
@@ -114,10 +107,9 @@ def sigterm_handler(signal,frame):
 
 
 
-
-
 #### Main Script ###
 def main():
+
     n_gpu = torch.cuda.device_count() 
     # check for multiple gpus and spawn processes
     if n_gpu > 1:
@@ -126,41 +118,45 @@ def main():
         print(f"spawned process {int(os.environ['RANK'])}/ {int(os.environ['WORLD_SIZE'])}")
     else:
         DISTRIBUTED = False
-
-    
     # initialise the sigterm handler
     signal.signal(signal.SIGTERM, sigterm_handler)
 
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
 
+    # ARGUMENTS NEEDED FOR THE MODEL
+    parser.add_argument("--data_dir", default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/", type=str,
+                        help="The input data dir. Should contain the .json files for the task.")
+    parser.add_argument("--model_type", default="bert", type=str,
+                        help="Model type selected in the list: ")
+    parser.add_argument("--pretrained", default="pretrained/base-vg-labels/ep_107_1192087", type=str,
+                        help="Path to pre-trained model or shortcut name selected in the list: ")
+    parser.add_argument("--task_name", default="places", type=str, 
+                        help="The name of the task to train selected in the list: ")
+
+    parser.add_argument("--data_label_type", default='bal', type=str, help="bal or all")
+    parser.add_argument("--drop_out", default=0.1, type=float, help="Drop out for BERT.")
+    parser.add_argument("--train_data_type", default='bal', type=str, help="bal or all")
+    parser.add_argument("--eval_data_type", default='bal', type=str, help="bal or all")
+    parser.add_argument("--loss_type", default='kl', type=str, help="kl or xe")
+    parser.add_argument("--use_layernorm", action='store_true', help="use_layernorm")
+    parser.add_argument("--use_label_seq", action='store_true', help="use_label_seq")
+    parser.add_argument("--use_pair", action='store_true', help="use_pair")
+    parser.add_argument("--num_choice", default=2, type=int, help="num_choice")
+    parser.add_argument("--max_seq_length", default=2, type=int, help="max lenght of text sequence")
+    parser.add_argument("--max_img_seq_length", default=30, type=int, help="The maximum total input image sequence length.")
+    parser.add_argument("--img_feature_dim", default=2054, type=int)
+    parser.add_argument("--code_voc", default=512, type=int)
+    parser.add_argument("--img_feature_type", default="faster_r-cnn", type=str)
+    parser.add_argument("--classifier", default="mlp", type=str)
+    parser.add_argument("--cls_hidden_scale", default=2, type=int)
+
+    ####
     parser.add_argument(
-        "--pretrained",
+        "--tsv_test",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
-        help="Path to the pth file that contains the model's checkpoint"
-    )
-    parser.add_argument(
-        "--local_rank",
-        type=int
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
-        help="Path to the config file for the task and model"
-    )
-    parser.add_argument(
-        "--annotTest",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
-        help="Path to the jsonline file containing the annotations of the dataset"
-    )
-    parser.add_argument(
-        "--root_test",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256",
-        help="Path to the images of the dataset (train)"
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--num_labels",
@@ -170,9 +166,15 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ALBEF/imgClf/out",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/Oscar/imgClf/out",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
+    )
+    parser.add_argument(
+        "--checkpoint_dir",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/Oscar/imgClf/checkpoints",
+        type=str,
+        help="The output directory where the training checkpoints will be saved.",
     )
     parser.add_argument(
         "--batch_size",
@@ -191,8 +193,22 @@ def main():
     # Get all arguments 
     args = parser.parse_args()
 
-    # load the config file
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+
+    # The oscar dataset needs for the features to be loaded and the tokenizer to be initialised
+    config = BertConfig.from_pretrained("bert-base-uncased", num_labels=args.num_labels, finetuning_task=args.task_name)
+
+    config.img_feature_dim = args.img_feature_dim
+    config.img_feature_type = args.img_feature_type
+    config.code_voc = args.code_voc
+    config.hidden_dropout_prob = args.drop_out
+    config.loss_type = args.loss_type
+    config.use_layernorm = args.use_layernorm
+    config.classifier = args.classifier
+    config.cls_hidden_scale = args.cls_hidden_scale
+    config.num_choice = args.num_choice
+
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
+
 
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
     torch.manual_seed(args.seed)
@@ -200,6 +216,8 @@ def main():
     random.seed(args.seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False          # This may allow training on the newer gpus idk
+
+
 
     # CUDA check 
     if dist.is_available() and dist.is_initialized():
@@ -222,15 +240,17 @@ def main():
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the dataset ##")
 
-    TestDataset = places365(args.annotTest, args.root_test)
-
+    # featuresTrain = load_obj_tsv(args.tsv_train)
+    # featuresVal = load_obj_tsv(args.tsv_val)
+    testDataset = Places365(args,"test",args.tsv_test,tokenizer) 
+    
 
     if DISTRIBUTED:
-        testSampler = DistributedSampler(dataset=TestDataset, shuffle=True)   
+        testSampler = DistributedSampler(dataset=testDataset, shuffle=True)   
        
 
         testDl = DataLoader(
-            dataset= TestDataset,
+            dataset= testDataset,
             batch_size= args.batch_size,
             #shuffle= True,
             pin_memory=True,
@@ -238,40 +258,36 @@ def main():
         )
     else:
         testDl = DataLoader(
-            dataset= TestDataset,
+            dataset= testDataset,
             batch_size= args.batch_size,
             shuffle= True,
             pin_memory=True,
         )
 
 
-
     if is_main_process()  or not DISTRIBUTED:
         print("## Dataset loaded succesfully ##")
+
+
 
 
     #################################################### MODEL STUFF ################################################################
     # Load the Model
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the Model ##")
-
-    
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = ALBEF(config=config, text_encoder="bert-base-uncased", num_labels = args.num_labels)
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased") 
-
-
-
-    ##################################################### Checkpoint or pre-trained ###################################################
-    if os.path.exists(os.path.join(args.pretrained,"ALBEFFineTuned.pth")):
+    model = OscarForImageClassification(config=config)
+      
+      ##################################################### Checkpoint or pre-trained ###################################################
+    if os.path.exists(os.path.join(args.pretrained,"OscarFineTuned.pth")):
         if is_main_process() or not DISTRIBUTED:
             print(f"Checkpoint found, loading")
 
-        checkpoint = torch.load(os.path.join(args.pretrained,"ALBEFFineTuned.pth"))
+        checkpoint = torch.load(os.path.join(args.pretrained,"OscarFineTuned.pth"))
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
 
@@ -279,16 +295,15 @@ def main():
             print("Checkpoint loaded")
     else:
         if is_main_process() or not DISTRIBUTED:
-            print("No checkpoint found")
-            sys.exit(1)
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
 
 
-
-    model.requires_grad_(False)
 
     
+
     if is_main_process() or not DISTRIBUTED:
         print("## Model Loaded ##")
+
 
     #################################################### Wrap up model with DDP and send to device #################################################
     if DISTRIBUTED:
@@ -301,15 +316,10 @@ def main():
     else:
         model.to(device)
 
-
-
-
-    ############################################### loss functions, optims, schedulers ##################################################
+    # Loss fnc and optimizer
     criterion = CrossEntropyLoss()
-
-
     
-    
+    model.requires_grad_(False)
 
 
 
@@ -319,37 +329,61 @@ def main():
 
 
 
+    # # Check for available checkpoints 
+    # if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointOscar.pth")):
+    #     print(f"Checkpoint found, loading")
+    #     checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointOscar.pth"))
+    #     start_epoch = checkpoint['current_epoch']
+    #     learningRate = checkpoint['lr']
+    #     trainingLoss = checkpoint['Tloss']
+    #     valLoss = checkpoint['Vloss']
+
+    #     # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+    #     if isinstance(model, nn.DataParallel):
+    #         model.module.load_state_dict(checkpoint['model_checkpoint'])
+    #     else:
+    #         model.load_state_dict(checkpoint['model_checkpoint'])
+    #     optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+    #     warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+    #     reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
 
 
-    ######################################################### Training loop ############################################################
+    #     print("Checkpoint loaded")
+    # else:
+    #     print("No checkpoint found, starting fine tunning from base pre-trained model")
 
+# Data related stuff
     
+   
+
+
+    # Progress bars
+
+    # Training loop ####################################################################################################################################
+
     print("***** Running inference *****")
     print("  Batch size: ", args.batch_size)
 
     # Wrap the training loop in a try, finally block to properly catch the sigterm signal
     try:
-
-        ########################################### Validation  #####################################################
-
         model.eval() # Get model in eval mode
 
         running_loss_val = 0 # Keep track of avg loss for each epoch (val)
         correctOnes = 0 # Keep track of avg loss for each epoch (val)
         for i, batch in enumerate(testDl):
 
-            # Data related stuff
-            image, text, label = batch
-            image, label = image.to(device), label.to(device) 
-            text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  # Tokenize sentence
+            batch = [t.cuda(device=device, non_blocking=True) for t in batch]
+            input_ids, attention_mask, segment_ids, labels, img_feats= batch
+
+
 
 
             ### Forward pass ###
             with amp.autocast(): # Cast from f32 to f16 
-                output = model(image,text_inputs)
+                output = model(input_ids = input_ids,attention_mask=  attention_mask, position_ids = segment_ids, img_feats= img_feats)
 
-                # Calculate batch loss
-                loss = criterion(output,label)
+        # Calculate batch loss
+                loss = criterion(output[0],labels)
 
             # Add loss to list (val)
             lossitem = loss.detach()
@@ -360,8 +394,8 @@ def main():
             running_loss_val += lossitem
 
 
-            top1 = torch.topk(output,1)[1].squeeze(1)
-            correctsval = (torch.eq(top1,label).sum()).detach()
+            top1 = torch.topk(output[0],1)[1].squeeze(1)
+            correctsval = (torch.eq(top1,labels).sum()).detach()
             correctOnes += correctsval
 
             if is_main_process() or not DISTRIBUTED:
@@ -369,9 +403,9 @@ def main():
     
         if DISTRIBUTED: 
             dist.all_reduce(correctOnes)
-            accuracy = correctOnes.item()/len(TestDataset)
+            accuracy = correctOnes.item()/len(testDataset)
         else:
-            accuracy = correctOnes.item()/len(TestDataset)
+            accuracy = correctOnes.item()/len(testDataset)
 
         #accuracy_running_val += accuracyitem
         testLoss = running_loss_val / len(testDl)
@@ -381,21 +415,21 @@ def main():
             print(f"inference loss: {testLoss} / accuracy: {accuracy}")
     
     
-    ############################################ Do when exception happens (eg sigterm) #############################################
-    except :
-        traceback.print_exc()
+    except Exception as e:
+        print(e)
         # when sigterm caught, save checkpoint and exit
         if DISTRIBUTED:
                 # wait for all gpus to get to here before saving
             dist.barrier()
         sys.exit(0)
 
-    
-    ###################################################### Create plots and save them ########################################################
+
+   
+     ###################################################### Create plots and save them ########################################################
     if is_main_process() or not DISTRIBUTED:
 
         # Also save the lists and stats in a csv to create other plots if needed
-        with open(f"{args.output_dir}/ALBEFInference.csv", "w") as f:
+        with open(f"{args.output_dir}/OscarInference.csv", "w") as f:
             write = csv.writer(f)
             write.writerow(["inference loss:"])
             write.writerow(testLoss)
