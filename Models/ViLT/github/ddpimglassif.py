@@ -470,8 +470,8 @@ def main(_config):
                 top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
                 corrects = (torch.eq(top1,label).sum() / len(label)).detach()
                 
-                accuracyitem = corrects.item()
-                accuracy_running +=accuracyitem
+                accuracyitem = corrects
+                accuracy_running += accuracyitem
 
                 if is_main_process() or not DISTRIBUTED:
                     print(f"Epoch({epoch}) -> batch {j}, loss: {lossitem}, accuracy: {accuracyitem},  learning rate {optimizer.param_groups[0]['lr']}")
@@ -480,7 +480,7 @@ def main(_config):
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             dist.all_reduce(accuracy_running)
-            accuracy_running = accuracy_running / n_gpu
+            accuracy_running = accuracy_running.item() / n_gpu
             epochAccuracy = accuracy_running/len(trainDL)
             accuracyTrain.append(epochAccuracy)
 
@@ -540,7 +540,7 @@ def main(_config):
                 top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
                 correctsval = (torch.eq(top1,label).sum() / len(label)).detach()
 
-                accuracyitem = correctsval.item()
+                accuracyitem = correctsval
                 accuracy_running_val +=accuracyitem
 
 
@@ -548,7 +548,7 @@ def main(_config):
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
             dist.all_reduce(accuracy_running_val)
-            accuracy_running_val = accuracy_running_val / n_gpu
+            accuracy_running_val = accuracy_running_val.item() / n_gpu
             accuracyEpochVal = accuracy_running_val/len(valDL)
             valAccuracy.append(accuracyEpochVal)
 

@@ -479,7 +479,7 @@ def main():
                 top1 = torch.topk(output[0],1)[1].squeeze(1)
                 corrects = (torch.eq(top1,labels).sum() / len(labels)).detach()
                 
-                accuracyitem = corrects.item()
+                accuracyitem = corrects
                 accuracy_running +=accuracyitem
 
 
@@ -492,7 +492,7 @@ def main():
             trainingLoss.append(epochLoss)
 
             dist.all_reduce(accuracy_running)
-            accuracy_running = accuracy_running / n_gpu
+            accuracy_running = accuracy_running.item() / n_gpu
             epochAccuracy = accuracy_running/len(trainDL)
             accuracyTrain.append(epochAccuracy)
 
@@ -544,7 +544,7 @@ def main():
                 top1 = torch.topk(output[0],1)[1].squeeze(1)
                 correctsval = (torch.eq(top1,labels).sum() / len(labels)).detach()
 
-                accuracyitem = correctsval.item()
+                accuracyitem = correctsval
                 accuracy_running_val +=accuracyitem
 
                 print(f"Validation({epoch}) -> batch {i}, loss: {loss.item()}")
@@ -554,7 +554,7 @@ def main():
             valLoss.append(epochLossVal)
 
             dist.all_reduce(accuracy_running_val)
-            accuracy_running_val = accuracy_running_val / n_gpu
+            accuracy_running_val = accuracy_running_val.item() / n_gpu
             accuracyEpochVal = accuracy_running_val/len(valDL)
             valAccuracy.append(accuracyEpochVal)
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
