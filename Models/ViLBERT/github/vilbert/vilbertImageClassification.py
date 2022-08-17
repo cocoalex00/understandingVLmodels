@@ -61,7 +61,7 @@ class VILBertForImageClassification(torch.nn.Module):
         vil_prediction, vil_prediction_gqa, vil_logit, vil_binary_prediction, vil_tri_prediction, vision_prediction, vision_logit, linguisic_prediction, linguisic_logit, all_attention_mask, sequence_output_v, pooled_output_v, pooled_output = self.vilbertBase(
             input_txt, input_imgs, image_loc, token_type_ids, attention_mask, image_attention_mask, co_attention_mask, task_ids, output_all_encoded_layers, output_all_attention_masks,
         )
-
+        #print(pooled_output_v.shape)
         # get image logits (use visual pooled output which is an overall represerntation of the image features)
         imageLogits = self.ImageClassifFC(pooled_output_v)
 

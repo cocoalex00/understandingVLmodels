@@ -145,7 +145,7 @@ def main():
     parser.add_argument("--num_choice", default=2, type=int, help="num_choice")
     parser.add_argument("--max_seq_length", default=2, type=int, help="max lenght of text sequence")
     parser.add_argument("--max_img_seq_length", default=30, type=int, help="The maximum total input image sequence length.")
-    parser.add_argument("--img_feature_dim", default=2048, type=int)
+    parser.add_argument("--img_feature_dim", default=2054, type=int)
     parser.add_argument("--code_voc", default=512, type=int)
     parser.add_argument("--img_feature_type", default="faster_r-cnn", type=str)
     parser.add_argument("--classifier", default="mlp", type=str)
@@ -185,13 +185,13 @@ def main():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=16,
+        default=2,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=2,
+        default=30,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -266,7 +266,7 @@ def main():
 
     # featuresTrain = load_obj_tsv(args.tsv_train)
     # featuresVal = load_obj_tsv(args.tsv_val)
-    trainDataset = Places365(args,"val",args.tsv_train,tokenizer) 
+    trainDataset = Places365(args,"train",args.tsv_train,tokenizer) 
     valDataset =  Places365(args,"val",args.tsv_val,tokenizer) ######################### Change to val for HTCONDOR
 
     if DISTRIBUTED:
@@ -307,31 +307,40 @@ def main():
 
 
 
+
     #################################################### MODEL STUFF ################################################################
     # Load the Model
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the Model ##")
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = OscarForImageClassification(config)
+    model = OscarForImageClassification.from_pretrained(args.model_name_or_path, from_tf=bool('.ckpt' in args.model_name_or_path), config=config)
+
     # Only train the last classifier
     model.bert.requires_grad_(False)
 
+
+
     
 
-    print("## Model Loaded ##")
+    if is_main_process() or not DISTRIBUTED:
+        print("## Model Loaded ##")
 
-    # Data paralellization in multiple gpus if more than one is available (only in one node, multiple is too hard f***)
-    if n_gpu > 1:
-        device = torch.device("cuda")
-        model = nn.DataParallel(model)
-        model.to(device)
-        print("Data parallelization activated")
+
+    #################################################### Wrap up model with DDP and send to device #################################################
+    if DISTRIBUTED:
+        model =  nn.SyncBatchNorm.convert_sync_batchnorm(model)
+        local_rank = int(os.environ["LOCAL_RANK"])
+        model.to(local_rank)
+        model = nn.parallel.DistributedDataParallel(model,device_ids = [local_rank])
+        if is_main_process():
+            print("Data parallelization activated")
     else:
         model.to(device)
 
     # Loss fnc and optimizer
     criterion = CrossEntropyLoss()
-    optimizer = AdamW(model.parameters(), args.lr)
+    learningrate = np.sqrt(n_gpu) * args.lr
+    optimizer = AdamW(model.parameters(), learningrate)
     # Create gradient scaler for f16 precision
     scaler = amp.GradScaler()
 
@@ -356,30 +365,56 @@ def main():
     start_epoch = 0
 
 
-    # Check for available checkpoints 
+    # # Check for available checkpoints 
+    # if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointOscar.pth")):
+    #     print(f"Checkpoint found, loading")
+    #     checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointOscar.pth"))
+    #     start_epoch = checkpoint['current_epoch']
+    #     learningRate = checkpoint['lr']
+    #     trainingLoss = checkpoint['Tloss']
+    #     valLoss = checkpoint['Vloss']
+
+    #     # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+    #     if isinstance(model, nn.DataParallel):
+    #         model.module.load_state_dict(checkpoint['model_checkpoint'])
+    #     else:
+    #         model.load_state_dict(checkpoint['model_checkpoint'])
+    #     optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+    #     warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+    #     reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
+
+
+    #     print("Checkpoint loaded")
+    # else:
+    #     print("No checkpoint found, starting fine tunning from base pre-trained model")
+
+
+
+         ##################################################### Checkpoint or pre-trained ###################################################
     if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointOscar.pth")):
-        print(f"Checkpoint found, loading")
-        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointOscar.pth"))
+        if is_main_process() or not DISTRIBUTED:
+            print(f"Checkpoint found, loading")
+
+        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointOscar.pth"), map_location=device)
         start_epoch = checkpoint['current_epoch']
         learningRate = checkpoint['lr']
         trainingLoss = checkpoint['Tloss']
         valLoss = checkpoint['Vloss']
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
-        if isinstance(model, nn.DataParallel):
-            model.module.load_state_dict(checkpoint['model_checkpoint'])
+        if DISTRIBUTED:
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
-            model.load_state_dict(checkpoint['model_checkpoint'])
+            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
         warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
         reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
 
-
-        print("Checkpoint loaded")
+        if is_main_process() or not DISTRIBUTED:
+            print("Checkpoint loaded")
     else:
-        print("No checkpoint found, starting fine tunning from base pre-trained model")
-
-
+        if is_main_process() or not DISTRIBUTED:
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
 
 
     # Progress bars
@@ -402,10 +437,10 @@ def main():
             for i, batch in enumerate(trainDL):
                 optimizer.zero_grad()               # Clear gradients of the optimizer
             
-
                 # Data related stuff
                 batch = [t.cuda(device=device, non_blocking=True) for t in batch]
                 input_ids, attention_mask, segment_ids, labels, img_feats= batch
+
 
 
 
@@ -415,8 +450,13 @@ def main():
 
                     # Calculate batch loss
                     loss = criterion(output[0],labels)
-                # Add loss to list
-                running_loss_train += loss.item()
+
+
+                # Add batch loss to list
+                lossitem = loss.detach()
+                dist.all_reduce(lossitem)
+                lossitem = lossitem.item()/n_gpu
+                running_loss_train += lossitem
                 
 
                 ### Backward pass ###
@@ -431,18 +471,30 @@ def main():
                 
                 if not skip_lr_schedule:
                     warmupScheduler.step() # update both lr schedulers 
-                print(f"Epoch({epoch}) -> batch {i}, loss: {loss.item()}, learning rate {optimizer.param_groups[0]['lr']}")
+
+                if is_main_process() or not DISTRIBUTED:
+                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
+
+
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
             trainingLoss.append(epochLoss)
-            # Save frequent checkpoints
-            if isinstance(model,nn.DataParallel):
-                model_checkpoint = model.module.state_dict()
-            else:
-                model_checkpoint = model.state_dict()
-            save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
 
 
+            if is_main_process() or not DISTRIBUTED:
+                print(f"epoch loss: {epochLoss}")
+
+            if DISTRIBUTED:
+                    # wait for all gpus to get to here before saving
+                dist.barrier()
+            
+            ########################################### Checkpoint every epoch ##########################################
+            if is_main_process() or not DISTRIBUTED:
+                if DISTRIBUTED:
+                    model_checkpoint = model.module.state_dict()
+                else:
+                    model_checkpoint = model.state_dict()
+                save_checkpoint(os.path.join(args.checkpoint_dir,str(epoch)),model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
 
 
             ########################################### Validation  #####################################################
@@ -464,8 +516,14 @@ def main():
                     
                     # Calculate batch loss
                     loss = criterion(output[0],labels)
+
+
                 # Add loss to list (val)
-                running_loss_val += loss.item()
+                lossitem = loss.detach()
+                dist.all_reduce(lossitem)
+                lossitem = lossitem.item()/n_gpu
+                running_loss_val += lossitem
+
                 print(f"Validation({epoch}) -> batch {i}, loss: {loss.item()}")
 
             # Calculate the avg loss of the validation epoch and append it to list 
@@ -475,7 +533,8 @@ def main():
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
             # Update the progress bar 
-            pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
+            if is_main_process() or not DISTRIBUTED:
+                pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
     
     
     
@@ -483,70 +542,80 @@ def main():
         print(repr(e))
         # when sigterm caught, save checkpoint and exit
         
-        # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
-        if isinstance(model,nn.DataParallel):
+        # when sigterm caught, save checkpoint and exit
+        if DISTRIBUTED:
+                # wait for all gpus to get to here before saving
+            dist.barrier()
+
+        if is_main_process() or not DISTRIBUTED:
+            # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel
+            if DISTRIBUTED:
+                model_checkpoint = model.module.state_dict()
+            else:
+                model_checkpoint = model.state_dict()
+            save_checkpoint(args.checkpoint_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
+        sys.exit(0)
+
+
+   
+    ############################################ Save completed checkpoint to the out folder #############################################
+    if is_main_process() or not DISTRIBUTED :
+        print("--- Training Complete, Saving checkpoint ---")
+        if DISTRIBUTED:
             model_checkpoint = model.module.state_dict()
         else:
             model_checkpoint = model.state_dict()
-        save_checkpoint(args.checkpoint_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, epoch)
-        sys.exit(0)
-
-    print("--- Training Complete, Saving checkpoint ---")
-    ####### Save completed checkpoint to the out folder ######
-    if isinstance(model,nn.DataParallel):
-        model_checkpoint = model.module.state_dict()
-    else:
-        model_checkpoint = model.state_dict()
-    save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
+        save_checkpoint(args.output_dir,model_checkpoint,optimizer.state_dict(),warmupScheduler.state_dict(),reducelrScheduler.state_dict(),trainingLoss,valLoss,learningRate, args.num_epochs, final = True)
     
     
     ####### Create plots and save them ######
-    plt.style.use(['seaborn']) # change style (looks cooler!)
-    # learning rate 
-    plt.figure(1)
-    plt.plot(learningRate, "m-o", label="Learning Rate")
-    plt.xlabel("Epochs")
-    plt.ylabel("Learning Rate")
-    plt.legend()
-    plt.savefig(f"{args.output_dir}/learningRate.png")
+    if is_main_process() or not DISTRIBUTED:
+        plt.style.use(['seaborn']) # change style (looks cooler!)
+        # learning rate 
+        plt.figure(1)
+        plt.plot(learningRate, "m-o", label="Learning Rate")
+        plt.xlabel("Epochs")
+        plt.ylabel("Learning Rate")
+        plt.legend()
+        plt.savefig(f"{args.output_dir}/learningRate.png")
 
-    # Combined loss 
-    plt.figure(2)
-    plt.plot(trainingLoss,"r-o", label="Train Loss", )
-    plt.plot(valLoss,"-p", label="Validation Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.savefig(f"{args.output_dir}/CombinedLoss.png")
+        # Combined loss 
+        plt.figure(2)
+        plt.plot(trainingLoss,"r-o", label="Train Loss", )
+        plt.plot(valLoss,"-p", label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.savefig(f"{args.output_dir}/CombinedLoss.png")
 
-    # Train loss 
-    plt.figure(3)
-    plt.plot(trainingLoss, label="Train Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.savefig(f"{args.output_dir}/TrainLoss.png")
+        # Train loss 
+        plt.figure(3)
+        plt.plot(trainingLoss, label="Train Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.savefig(f"{args.output_dir}/TrainLoss.png")
 
-    # Val loss 
-    plt.figure(4)
-    plt.plot(valLoss, label="Validation Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
-    plt.legend()
-    plt.savefig(f"{args.output_dir}/ValLoss.png")
+        # Val loss 
+        plt.figure(4)
+        plt.plot(valLoss, label="Validation Loss")
+        plt.xlabel("Epochs")
+        plt.ylabel("Loss")
+        plt.legend()
+        plt.savefig(f"{args.output_dir}/ValLoss.png")
 
-    # Also save the lists and stats in a csv to create other plots if needed 
-    with open(f"{args.output_dir}/Oscarlists.csv", "w") as f:
-        write = csv.writer(f)
-        write.writerow(["Learning rate over the epochs:"])
-        write.writerow(learningRate)
-        write.writerow(["Training loss over the epochs:"])
-        write.writerow(trainingLoss)
-        write.writerow(["Validation loss over the epochs:"])
-        write.writerow(valLoss)
-        write.writerow(["--- stats ---"])
-        write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
-        write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
-        
+        # Also save the lists and stats in a csv to create other plots if needed 
+        with open(f"{args.output_dir}/Oscarlists.csv", "w") as f:
+            write = csv.writer(f)
+            write.writerow(["Learning rate over the epochs:"])
+            write.writerow(learningRate)
+            write.writerow(["Training loss over the epochs:"])
+            write.writerow(trainingLoss)
+            write.writerow(["Validation loss over the epochs:"])
+            write.writerow(valLoss)
+            write.writerow(["--- stats ---"])
+            write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
+            write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
+            
 if __name__=="__main__":
     main()

@@ -229,6 +229,10 @@ def main():
     # Only train the last classifier
     model.vilbertBase.requires_grad_(False)
 
+    for name, param in model.named_parameters():
+        if param.requires_grad == True:
+            print(name)
+
     
 
     print("## Model Loaded ##")
@@ -324,6 +328,8 @@ def main():
                 with amp.autocast(): # Cast from f32 to f16 
                     outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask)
                 
+                    print(outputs.shape)
+                    print(labels.shape)
                     # Calculate batch loss
                     loss = criterion(outputs,labels)
                 # Add loss to list
@@ -373,6 +379,7 @@ def main():
                 # Forward pass
                 with amp.autocast(): # Cast from f32 to f16 
                     outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask)
+                    
                     
                     # Calculate batch loss 
                     loss = criterion(outputs,labels)

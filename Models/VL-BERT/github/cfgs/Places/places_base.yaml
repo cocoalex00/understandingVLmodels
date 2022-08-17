@@ -6,7 +6,7 @@ GPUS: '0,1,2,3'
 LOG_FREQUENT: 100
 VAL_FREQUENT: 1
 CHECKPOINT_FREQUENT: 1
-MODEL_PREFIX: #'vl-bert_large_a_res101'
+MODEL_PREFIX: 'vl-bert_base_a_res101'
 NUM_WORKERS_PER_GPU: 4
 SCALES:
 - 600
@@ -67,7 +67,7 @@ NETWORK:
   BERT_PRETRAINED: ''
   BERT_PRETRAINED_EPOCH: 0
   BERT_FROZEN: false
-  ENABLE_CNN_REG_LOSS: true
+  ENABLE_CNN_REG_LOSS: false
   ANS_LOSS_WEIGHT: 1.0
   #CNN_LOSS_TOP: true
 
@@ -83,6 +83,7 @@ NETWORK:
     attention_probs_dropout_prob: 0.1
     max_position_embeddings: 512
     type_vocab_size: 3
+    with_pooler: true
     vocab_size: 30522
     initializer_range: 0.02
     visual_scale_text_init: 0.0

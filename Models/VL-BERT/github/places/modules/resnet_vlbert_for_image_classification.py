@@ -7,7 +7,7 @@ from external.pytorch_pretrained_bert import BertTokenizer
 from external.pytorch_pretrained_bert.modeling import BertPredictionHeadTransform
 from common.module import Module
 from common.fast_rcnn import FastRCNN
-from common.visual_linguistic_bert import VisualLinguisticBert
+from common.visual_linguistic_bert import VisualLinguisticBert, VisualLinguisticBertMVRCHeadTransform
 from torch.nn import GELU
 # from pytorch_transformers.modeling_bert import BertPooler
 
@@ -47,7 +47,6 @@ class ResNetVLBERT(Module):
 
         self.tokenizer = BertTokenizer.from_pretrained(config.NETWORK.BERT_MODEL_NAME)
 
-        self.pooler = BertPooler(config)
 
         language_pretrained_model_path = None
         if config.NETWORK.BERT_PRETRAINED != '':
@@ -69,7 +68,7 @@ class ResNetVLBERT(Module):
         # self.hm_out = nn.Linear(config.NETWORK.VLBERT.hidden_size, config.NETWORK.VLBERT.hidden_size)
         # self.hi_out = nn.Linear(config.NETWORK.VLBERT.hidden_size, config.NETWORK.VLBERT.hidden_size)
 
-        # transform = BertPredictionHeadTransform(config.NETWORK.VLBERT)
+        transform = VisualLinguisticBertMVRCHeadTransform(config.NETWORK.VLBERT)
         # linear = nn.Linear(config.NETWORK.VLBERT.hidden_size, config.DATASET.ANSWER_VOCAB_SIZE)
         # self.final_mlp = nn.Sequential(
         #     transform,
@@ -86,12 +85,16 @@ class ResNetVLBERT(Module):
         # )
 
         self.final_mlp = nn.Sequential(
+            transform,
             nn.Linear(config.NETWORK.VLBERT.hidden_size, config.NETWORK.VLBERT.hidden_size * 2),
-            GELU(),
-            nn.LayerNorm(config.NETWORK.VLBERT.hidden_size * 2 , eps=1e-12),
-            nn.Linear(config.NETWORK.VLBERT.hidden_size * 2 , config.DATASET.ANSWER_VOCAB_SIZE),
+            #nn.LayerNorm(config.NETWORK.VLBERT.hidden_size * 2, eps=1e-6),
+            torch.nn.ReLU(inplace=True),
+            nn.Linear(config.NETWORK.VLBERT.hidden_size* 2, config.NETWORK.VLBERT.hidden_size *3 ),
+            torch.nn.ReLU(inplace=True),
+            nn.Linear(config.NETWORK.VLBERT.hidden_size * 3, config.DATASET.ANSWER_VOCAB_SIZE),
         )
 
+        print(self.final_mlp)
         # init weights
         self.init_weight()
 
@@ -127,7 +130,7 @@ class ResNetVLBERT(Module):
 
     def train(self, mode=True):
         super(ResNetVLBERT, self).train(mode)
-        # turn some frozen layers to eval mode
+        #turn some frozen layers to eval mode
         if self.image_feature_bn_eval:
             self.image_feature_extractor.bn_eval()
 
@@ -168,6 +171,10 @@ class ResNetVLBERT(Module):
         box_mask = box_mask[:, :max_len]
         boxes = boxes[:, :max_len]
 
+        #print(box_mask.shape)
+        # print(boxes.shape)
+
+
         obj_reps = self.image_feature_extractor(images=images,
                                                 boxes=boxes,
                                                 box_mask=box_mask,
@@ -177,11 +184,15 @@ class ResNetVLBERT(Module):
 
         ############################################
 
+        # print(obj_reps['obj_reps'].shape)
+
         text_input_ids = text
         text_tags = text.new_zeros(text.shape)
         text_token_type_ids = text.new_zeros(text.shape)
         text_mask = (text_input_ids > 0)
         text_visual_embeddings = self._collect_obj_reps(text_tags, obj_reps['obj_reps'])
+
+        # print(text_visual_embeddings.shape)
 
         object_linguistic_embeddings = self.object_linguistic_embeddings(
             boxes.new_zeros((boxes.shape[0], boxes.shape[1])).long()
@@ -189,30 +200,36 @@ class ResNetVLBERT(Module):
         object_vl_embeddings = torch.cat((obj_reps['obj_reps'], object_linguistic_embeddings), -1)
 
         assert self.config.NETWORK.VLBERT.object_word_embed_mode == 2
-        object_linguistic_embeddings = self.object_linguistic_embeddings(
-            boxes.new_zeros((boxes.shape[0], boxes.shape[1])).long()
-        )
-        object_vl_embeddings = torch.cat((obj_reps['obj_reps'], object_linguistic_embeddings), -1)
 
         ###########################################
 
         # Visual Linguistic BERT
 
-        hidden_states, hc = self.vlbert(text_input_ids,
+        hidden_states_t, hidden_states_v, pooled_output = self.vlbert(text_input_ids,
                                       text_token_type_ids,
                                       text_visual_embeddings,
                                       text_mask,
                                       object_vl_embeddings,
                                       box_mask,
-                                      output_all_encoded_layers=False)
+                                      output_all_encoded_layers=False,
+                                      output_text_and_object_separately=True)
         #_batch_inds = torch.arange(question.shape[0], device=question.device)
 
         # we only want the hidden states corresponding to the whole image  features
         #   input of the following form:
         #       [CLS] + [SEP] + [Whole image feature] + [ROI features]*36 + [END]
-        #hm = hidden_states[:,2, :]
-        hm = self.pooler(hidden_states)
+        hm = hidden_states_t[:,-1, :]
+
+        #print(hidden_states_v.shape)
+        
+        capaz = torch.sum(hidden_states_v,1) / 37
+        #print(hm[0,:] == hm[1,:])
+
         #print(hm.shape)
+
+        # print(hidden_states_t.shape)
+        #print(hidden_states_v.shape)
+        # print(hm.shape)
         # hm = F.tanh(self.hm_out(hidden_states[_batch_inds, ans_pos]))
         # hi = F.tanh(self.hi_out(hidden_states[_batch_inds, ans_pos + 2]))
 
@@ -224,6 +241,10 @@ class ResNetVLBERT(Module):
         # logits = self.final_mlp(hc)
         logits = self.final_mlp(hm)
 
+        #print(logits.shape)
+
+        #print(logits.shape)
+
         # loss
         #ans_loss = F.binary_cross_entropy_with_logits(logits, label) * label.size(1)
 
@@ -233,7 +254,7 @@ class ResNetVLBERT(Module):
 
         #loss = ans_loss.mean()
 
-        return hidden_states, logits#outputs, loss
+        return  logits#outputs, loss
 
     def inference_forward(self,
                           image,

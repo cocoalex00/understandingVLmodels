@@ -21,8 +21,8 @@ LR= 0.000002
 NUM_EPOCHS= 300
 BATCH_SIZE = 2
 WEIGHT_PATH = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model"
-ANNOT = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/VL-BERT/github/data/Places/train.json"
-TSV = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/VL-BERT/github/data/Places/valid_obj36.tsv"
+ANNOT = "/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json"
+TSV = "/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/"
 CONFIG= "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/VL-BERT/github/cfgs/Places/places_base.yaml"
 ROOT_PATH = "/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/"
 from pretrain.function.config import config, update_config
@@ -36,7 +36,7 @@ if __name__ == "__main__":
     )
 
     boxes, im_info, text_ids, label = next(iter(data_loader))
-    text_ids = torch.stack(text_ids)
+    #text_ids = torch.stack(text_ids)
 
     # Update the config file of the model according to the yaml file of the task
     update_config(CONFIG)
@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     for i in tqdm(range(NUM_EPOCHS)):
         output = model.train_forward(None,boxes,im_info,text_ids)
-        loss = criterion(output[1],label)
+        loss = criterion(output,label)
         loss.backward()
         optim.step()
         print(loss)

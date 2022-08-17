@@ -3,7 +3,7 @@
 
 import torch.nn as nn
 
-from .param import args
+from .param import args as arguments
 from src.lxrt.entry import LXRTEncoder
 from src.lxrt.modeling import BertLayerNorm, GeLU
 from pytorch_transformers.modeling_bert import BertPooler
@@ -16,7 +16,7 @@ class imgClassifModel(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
         self.lxrt_encoder = LXRTEncoder(
-            args,
+            arguments,
             max_seq_length=MAX_GQA_LENGTH
         )
         hid_dim = self.lxrt_encoder.dim

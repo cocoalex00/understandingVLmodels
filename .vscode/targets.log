@@ -8,12 +8,12 @@ make: *** No rule to make target 'all'.  Stop.
 # This is free software: you are free to change and redistribute it.
 # There is NO WARRANTY, to the extent permitted by law.
 
-# Make data base, printed on Fri Aug 12 10:56:12 2022
+# Make data base, printed on Wed Aug 17 16:55:01 2022
 
 # Variables
 
 # environment
-TMUX_PANE = %1
+TMUX_PANE = %2
 # environment
 LC_ALL = C
 # environment
@@ -75,7 +75,7 @@ CONDA_SHLVL = 0
 # automatic
 @F = $(notdir $@)
 # environment
-TMUX = /tmp/tmux-1000/default,79,1
+TMUX = /tmp/tmux-1000/default,30,1
 # automatic
 ?D = $(patsubst %/,%,$(dir $?))
 # environment
@@ -106,12 +106,10 @@ MAKE = $(MAKE_COMMAND)
 PATH = /home/cocoalex/.vscode-server/bin/6d9b74a70ca9c7733b29f0456fd8195364076dda/bin/remote-cli:/home/cocoalex/anaconda3/condabin:/usr/local/cuda-11.3/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/usr/lib/wsl/lib:/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/bin:/mnt/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.1/libnvvp:/mnt/c/Python39/Scripts:/mnt/c/Python39:/mnt/c/Windows/system32:/mnt/c/Windows:/mnt/c/Windows/System32/Wbem:/mnt/c/Windows/System32/WindowsPowerShell/v1.0:/mnt/c/Windows/System32/OpenSSH:/mnt/c/Program Files (x86)/NVIDIA Corporation/PhysX/Common:/mnt/c/Program Files/NVIDIA Corporation/NVIDIA NvDLISR:/mnt/c/lua:/mnt/c/curl/bin:/mnt/c/ProgramData/chocolatey/bin:/mnt/c/Python27:/mnt/c/Python27/Scripts:/mnt/c/Program Files/NVIDIA Corporation/Nsight Compute 2019.4.0:/mnt/c/WINDOWS/system32:/mnt/c/WINDOWS:/mnt/c/WINDOWS/System32/Wbem:/mnt/c/WINDOWS/System32/WindowsPowerShell/v1.0:/mnt/c/WINDOWS/System32/OpenSSH:/mnt/c/Program Files/MATLAB/R2021a/bin:/mnt/c/Program Files/Git/cmd:/mnt/c/Program Files/Docker/Docker/resources/bin:/mnt/c/ProgramData/DockerDesktop/version-bin:/mnt/c/Users/aleja/AppData/Local/Microsoft/WindowsApps:/mnt/c/tools/neovim/Neovim/bin:/mnt/c/Users/aleja/AppData/Local/Programs/MiKTeX/miktex/bin/x64:/mnt/c/Users/aleja/AppData/Local/Programs/Microsoft VS Code/bin:/mnt/c/Users/aleja/AppData/Local/GitHubDesktop/bin:/snap/bin
 # default
 MAKEFILES := 
-# environment
-MOTD_SHOWN = update-motd
 # automatic
 ^F = $(notdir $^)
 # environment
-WSL_GUEST_IP = 172.22.148.69
+WSL_GUEST_IP = 172.22.201.8
 # environment
 TERM_PROGRAM = tmux
 # environment
@@ -139,7 +137,7 @@ VSCODE_WSL_EXT_LOCATION = /mnt/c/Users/aleja/.vscode/extensions/ms-vscode-remote
 # environment
 EDITOR = vim
 # environment
-DISPLAY = 172.22.144.1:0
+DISPLAY = 172.22.192.1:0
 # environment
 USER = cocoalex
 # default
@@ -151,13 +149,13 @@ XDG_RUNTIME_DIR = /mnt/wslg/runtime-dir
 # environment
 APPDATA = C:\Users\aleja\AppData\Roaming
 # environment
-WSL_HOST_IP = 172.22.144.1
+WSL_HOST_IP = 172.22.192.1
 # environment
 _CE_M = 
 # environment
 LC_CTYPE = en_US.UTF-8
 # environment
-VSCODE_IPC_HOOK_CLI = /mnt/wslg/runtime-dir/vscode-ipc-8fd587e6-0478-4780-858f-894db2225fe2.sock
+VSCODE_IPC_HOOK_CLI = /mnt/wslg/runtime-dir/vscode-ipc-f2ee43d2-016a-4a6d-b3d1-eb19fd9111e1.sock
 # environment
 VSCODE_AMD_ENTRYPOINT = vs/workbench/api/node/extensionHostProcess
 # environment
@@ -183,7 +181,7 @@ CONDA_EXE = /home/cocoalex/anaconda3/bin/conda
 # environment
 _CE_CONDA = 
 # variable set hash-table stats:
-# Load=85/1024=8%, Rehash=0, Collisions=2/112=2%
+# Load=84/1024=8%, Rehash=0, Collisions=2/111=2%
 
 # Pattern-specific Variable Values
 
@@ -249,6 +247,6 @@ GNUmakefile:
 # strcache performance: lookups = 24 / hit rate = 12%
 # hash-table stats:
 # Load=21/8192=0%, Rehash=0, Collisions=0/24=0%
-# Finished Make data base on Fri Aug 12 10:56:12 2022
+# Finished Make data base on Wed Aug 17 16:55:01 2022
 
  
