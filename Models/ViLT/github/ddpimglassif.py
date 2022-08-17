@@ -152,13 +152,13 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outepochs",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outfull",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsepochs",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsfull",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
@@ -171,7 +171,7 @@ def main(_config):
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=50,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -307,9 +307,9 @@ def main(_config):
     model.load_state_dict(ckpt["state_dict"], strict=False) # Not all the layers are included in the state dict (I added some)
 
     # # Only train the last classifiers
-    # for name, param in model.named_parameters():
-    #     if "img_classifier" not in name:
-    #         param.requires_grad_(False)
+    for name, param in model.named_parameters():
+        if "img_classifier" not in name:
+            param.requires_grad_(False)
     
     del ckpt
 
@@ -467,14 +467,14 @@ def main(_config):
                 if not skip_lr_schedule:
                     warmupScheduler.step() # update both lr schedulers 
 
-                top1 = torch.topk(output,1)[1].squeeze(1)
+                top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
                 corrects = (torch.eq(top1,label).sum() / len(label)).detach()
                 
                 accuracyitem = corrects.item()
                 accuracy_running +=accuracyitem
 
                 if is_main_process() or not DISTRIBUTED:
-                    print(f"Epoch({epoch}) -> batch {j}, loss: {lossitem}, learning rate {optimizer.param_groups[0]['lr']}")
+                    print(f"Epoch({epoch}) -> batch {j}, loss: {lossitem}, accuracy: {accuracyitem},  learning rate {optimizer.param_groups[0]['lr']}")
 
 
             # Calculate the avg loss of the training epoch and append it to list 
@@ -537,7 +537,7 @@ def main(_config):
                 lossitem = lossitem.item()/n_gpu
                 running_loss_val += lossitem
 
-                top1 = torch.topk(output,1)[1].squeeze(1)
+                top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
                 correctsval = (torch.eq(top1,label).sum() / len(label)).detach()
 
                 accuracyitem = correctsval.item()
