@@ -251,7 +251,7 @@ def main():
     #model.vlbert.requires_grad_(False)
     model.object_linguistic_embeddings.requires_grad_(False)
 
-    model.vlbert.requires_grad_(False)
+    #model.vlbert.requires_grad_(False)
     # for name, param in model.named_parameters():s
     #     if "final" not in name:
     #         param.requires_grad_(False)
