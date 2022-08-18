@@ -125,7 +125,7 @@ def main():
 
     parser.add_argument(
         "--from_pretrained",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/LXMERT/github/snap/pretrained/model",
         type=str,
         help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part"
     )
@@ -133,7 +133,7 @@ def main():
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_train_alexsplit.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
@@ -143,19 +143,19 @@ def main():
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_val.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/train/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--tsv_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
     ####
@@ -167,26 +167,26 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/imgClf/out",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/imgClf/out50",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/imgClf/checkpoints",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/imgClf/checkpoints50",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=2,
+        default=50,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -369,7 +369,7 @@ def main():
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
