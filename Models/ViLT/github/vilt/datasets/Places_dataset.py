@@ -14,7 +14,7 @@ class Places365(PlacesDatasetBase):
         elif split == "val":
             names = ["places_val"]
         elif split == "test":
-            names = ["places_test"]
+            names = ["places_test_alexsplit"]
 
         super().__init__(
             data_dir=datadir,
