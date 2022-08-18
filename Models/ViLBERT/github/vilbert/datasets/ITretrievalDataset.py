@@ -120,7 +120,7 @@ def get_data_loader(annotations_jsonpath: str, labels_path:str, TSV_path: str, b
 
  ############################ DATASET CLASS #######################################
 
-class ImageClassificationDataset(Dataset):
+class ITretrievalPlaces(Dataset):
     def __init__(
         self,
         annotations_jsonpath: str,
