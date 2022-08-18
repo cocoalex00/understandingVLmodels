@@ -91,6 +91,8 @@ def _load_dataset(args, name):
         examples = processor.get_train_examples(args.data_dir,  'places365_train_alexsplit.json')
     elif name == 'val':
         examples = processor.get_dev_examples(args.data_dir, 'places365_val.json')
+    elif name == 'test':
+        examples = processor.get_dev_examples(args.data_dir, 'places365_test_alexsplit.json')
     return examples
 
 class Places365(Dataset):
@@ -98,7 +100,7 @@ class Places365(Dataset):
 
     def __init__(self, args, name, img_features_path, tokenizer):
         super(Places365, self).__init__()
-        assert name in ['train', 'val']
+        assert name in ['train', 'val',"test"]
 
         # Convert to dictionary 
         self.img_features_path = img_features_path

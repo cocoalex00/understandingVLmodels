@@ -1,14 +1,23 @@
 # Copyright (c) Alejandro Hernandez Diaz.
 
-# This source code implements the training script to fine-tune the adapted ALBEF model to image classification.
+# This source code implements the training script to fine-tune the adapted LXMERT model to image classification.
 
 # imports 
-from selectors import EpollSelector
-import matplotlib.pyplot as plt
-import torch
+import enum
 import matplotlib
 matplotlib.use("pdf")
-import traceback 
+import matplotlib.pyplot as plt
+import torch
+
+from torch.utils.data import DataLoader
+from vilt.modules import ViLTransformerSS
+from vilt.datasets.Places_dataset import Places365
+import functools
+
+import traceback
+
+
+from vilt.config import ex
 
 import csv
 import signal
@@ -19,20 +28,10 @@ import numpy as np
 import random 
 from tqdm import tqdm
 import argparse
-import yaml
-import utils
-from dataset import create_sampler,create_loader
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 
-from distribuido import setup_for_distributed, save_on_master, is_main_process
-
-
-
-from torch.utils.data import DataLoader
-from transformers import  get_linear_schedule_with_warmup, BertTokenizer
-from dataset.places_dataset import places365
-from models.model_imgclf import ALBEF
+from transformers import  get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, BertTokenizer
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     ReduceLROnPlateau
@@ -44,8 +43,11 @@ try:
 except ModuleNotFoundError:
     APEX_AVAILABLE = False
 
+from distribuido import setup_for_distributed, save_on_master, is_main_process
+
+
 gpu_list = "0,1,2,3"
-os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+#os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 
 def init_distributed():
     # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
@@ -66,7 +68,6 @@ def init_distributed():
 
     # synchronizes all the threads to reach this point before moving on
     dist.barrier()
-
 
 
 def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_checkpoint,scheduler_checkpoint,Tloss_checkpoint,Vloss_checkpoint,lr_checkpoint, current_epoch, final: bool= False):
@@ -95,10 +96,11 @@ def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_che
     # Save to checkpoint file, use different name for final checkpoint #
     if not os.path.exists(folder_path + "/"):
         os.makedirs(folder_path+"/")
+
     if final:
-        torch.save(obj=checkpoint, f=f"{folder_path}/ALBEFFineTuned.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/ViLTFineTuned.pth")
     else:
-        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointALBEF.pth")
+        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointViLT.pth")
     print("--Checkpoint saved--")
 
 
@@ -114,10 +116,10 @@ def sigterm_handler(signal,frame):
 
 
 
-
-
 #### Main Script ###
-def main():
+
+@ex.automain
+def main(_config):
     n_gpu = torch.cuda.device_count() 
     # check for multiple gpus and spawn processes
     if n_gpu > 1:
@@ -127,41 +129,21 @@ def main():
     else:
         DISTRIBUTED = False
 
-    
-    # initialise the sigterm handler
-    signal.signal(signal.SIGTERM, sigterm_handler)
-
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
-
     parser.add_argument(
         "--pretrained",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
-        help="Path to the pth file that contains the model's checkpoint"
+        help="Path to the checkpoint file containing the model's weights and stuff",
     )
     parser.add_argument(
-        "--local_rank",
-        type=int
-    )
-    parser.add_argument(
-        "--config",
+        "--data_path",
+        default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
-        help="Path to the config file for the task and model"
+        help="Path to the folder where the dataset file (.arrow) lives",
     )
-    parser.add_argument(
-        "--annotTest",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
-        help="Path to the jsonline file containing the annotations of the dataset"
-    )
-    parser.add_argument(
-        "--root_test",
-        type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256",
-        help="Path to the images of the dataset (train)"
-    )
+    ####
     parser.add_argument(
         "--num_labels",
         default=365,
@@ -170,29 +152,28 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ALBEF/imgClf/out",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outfull",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=33,
         help="The number of samples in each batch.",
     )
-
     parser.add_argument(
         "--seed",
         type=int,
         default=0,
         help="random seed for initialisation in multiple GPUs"
     )
+    parser.add_argument
 
     # Get all arguments 
     args = parser.parse_args()
 
-    # load the config file
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+
 
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
     torch.manual_seed(args.seed)
@@ -201,13 +182,14 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False          # This may allow training on the newer gpus idk
 
+
+
     # CUDA check 
     if dist.is_available() and dist.is_initialized():
         device = "cuda:" + str(dist.get_rank())
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 
-    n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
 
     if is_main_process() or not DISTRIBUTED:
         print("the device being used is: " + str(device))
@@ -222,10 +204,18 @@ def main():
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the dataset ##")
 
-    TestDataset = places365(args.annotTest, args.root_test)
+    # Load the custom data collator as well as the tokenizer 
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    collator = DataCollatorForLanguageModeling(tokenizer,False)
 
+    TestDataset = Places365(args.data_path, split="test")   ####### Change this to train for the HTCONDOR!!!!!!!
 
     if DISTRIBUTED:
+        testSampler = DistributedSampler(dataset=TestDataset, shuffle=True)   
+        # create the two custom collator functions
+        collateTest = functools.partial(
+                TestDataset.collate, mlm_collator=collator,
+            )
         testSampler = DistributedSampler(dataset=TestDataset, shuffle=True)   
        
 
@@ -234,17 +224,20 @@ def main():
             batch_size= args.batch_size,
             #shuffle= True,
             pin_memory=True,
-            sampler=testSampler
+            sampler=testSampler,
+            collate_fn=collateTest,
         )
     else:
+        collateTest = functools.partial(
+                TestDataset.collate, mlm_collator=collator,
+            )
         testDl = DataLoader(
             dataset= TestDataset,
             batch_size= args.batch_size,
             shuffle= True,
             pin_memory=True,
+            collate_fn=collateTest,
         )
-
-
 
     if is_main_process()  or not DISTRIBUTED:
         print("## Dataset loaded succesfully ##")
@@ -254,24 +247,19 @@ def main():
     # Load the Model
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the Model ##")
-
-    
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = ALBEF(config=config, text_encoder="bert-base-uncased", num_labels = args.num_labels)
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased") 
-
-
+    model = ViLTransformerSS(_config,"places")
 
     ##################################################### Checkpoint or pre-trained ###################################################
-    if os.path.exists(os.path.join(args.pretrained,"ALBEFFineTuned.pth")):
+    if os.path.exists(os.path.join(args.pretrained,"ViLTFineTuned.pth")):
         if is_main_process() or not DISTRIBUTED:
             print(f"Checkpoint found, loading")
 
-        checkpoint = torch.load(os.path.join(args.pretrained,"ALBEFFineTuned.pth"))
+        checkpoint = torch.load(os.path.join(args.pretrained,"ViLTFineTuned.pth"))
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
 
@@ -279,18 +267,13 @@ def main():
             print("Checkpoint loaded")
     else:
         if is_main_process() or not DISTRIBUTED:
-            print("No checkpoint found")
-            sys.exit(1)
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
 
 
-
-    model.requires_grad_(False)
-
-    
     if is_main_process() or not DISTRIBUTED:
         print("## Model Loaded ##")
 
-    #################################################### Wrap up model with DDP and send to device #################################################
+   #################################################### Wrap up model with DDP and send to device #################################################
     if DISTRIBUTED:
         model =  nn.SyncBatchNorm.convert_sync_batchnorm(model)
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -303,27 +286,42 @@ def main():
 
 
 
+    
 
     ############################################### loss functions, optims, schedulers ##################################################
     criterion = CrossEntropyLoss()
-
-
-    
-    
-
-
 
     # Lists to keep track of nice stuff like loss and lr 
     testLoss = []
     accuracyTest = []
 
 
+    # # Check for available checkpoints 
+    # if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointViLT.pth")):
+    #     print(f"Checkpoint found, loading")
+    #     checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointViLT.pth"))
+    #     start_epoch = checkpoint['current_epoch']
+    #     learningRate = checkpoint['lr']
+    #     trainingLoss = checkpoint['Tloss']
+    #     valLoss = checkpoint['Vloss']
+
+    #     # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+    #     if isinstance(model, nn.DataParallel):
+    #         model.module.load_state_dict(checkpoint['model_checkpoint'])
+    #     else:
+    #         model.load_state_dict(checkpoint['model_checkpoint'])
+    #     optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+    #     warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+    #     reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
+
+
+    #     print("Checkpoint loaded")
+    # else:
+    #     print("No checkpoint found, starting fine tunning from base pre-trained model")
+ 
 
 
 
-    ######################################################### Training loop ############################################################
-
-    
     print("***** Running inference *****")
     print("  Batch size: ", args.batch_size)
 
@@ -338,18 +336,21 @@ def main():
         correctOnes = 0 # Keep track of avg loss for each epoch (val)
         for i, batch in enumerate(testDl):
 
-            # Data related stuff
-            image, text, label = batch
-            image, label = image.to(device), label.to(device) 
-            text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  # Tokenize sentence
+            label = torch.tensor(batch["label"]).to(device).squeeze()
+            for i in batch.keys():
+                if type(batch[i]) != list:
+                    batch[i] = batch[i].to(device)
 
+            batch["image"] = [batch["image"][0].to(device)]
+        
 
             ### Forward pass ###
             with amp.autocast(): # Cast from f32 to f16 
-                output = model(image,text_inputs)
+                output = model(batch)
 
                 # Calculate batch loss
-                loss = criterion(output,label)
+                loss = criterion(output["imgcls_logits"],label)
+    
 
             # Add loss to list (val)
             lossitem = loss.detach()
@@ -360,7 +361,7 @@ def main():
             running_loss_val += lossitem
 
 
-            top1 = torch.topk(output,1)[1].squeeze(1)
+            top1 = torch.topk(output["imgcls_logits"],1)[1].squeeze(1)
             correctsval = (torch.eq(top1,label).sum()).detach()
             correctOnes += correctsval
 
@@ -389,9 +390,9 @@ def main():
                 # wait for all gpus to get to here before saving
             dist.barrier()
         sys.exit(0)
+        
 
-    
-    ###################################################### Create plots and save them ########################################################
+       ###################################################### Create plots and save them ########################################################
     if is_main_process() or not DISTRIBUTED:
 
         # Also save the lists and stats in a csv to create other plots if needed
@@ -402,5 +403,4 @@ def main():
             write.writerow(["inference Accuracy"])
             write.writerow(accuracy)
         
-if __name__=="__main__":
-    main()
+
