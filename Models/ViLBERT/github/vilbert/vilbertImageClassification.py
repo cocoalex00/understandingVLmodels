@@ -37,8 +37,8 @@ class VILBertForImageClassification(torch.nn.Module):
         # Last fully connected layer (design taken from original paper)
         self.ImageClassifFC = nn.Sequential(
             nn.Linear(self.config.bi_hidden_size, self.config.bi_hidden_size * 2),
-            GeLU(),
-            BertLayerNorm(self.config.bi_hidden_size * 2 , eps=1e-12),
+            nn.GELU(),
+            nn.LayerNorm(self.config.bi_hidden_size * 2 , eps=1e-6),
             nn.Linear(self.config.bi_hidden_size * 2 , num_labels),
         )
 

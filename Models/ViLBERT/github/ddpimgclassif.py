@@ -143,7 +143,7 @@ def main():
     )
     parser.add_argument(
         "--from_pretrained",
-        default="bert-base-uncased",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/ViLBERT/github/save/pretrained_model.bin",
         type=str,
         help="Bert pre-trained model selected in the list: bert-base-uncased, "
         "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.",

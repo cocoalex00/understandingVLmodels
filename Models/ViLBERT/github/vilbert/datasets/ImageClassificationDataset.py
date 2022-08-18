@@ -5,6 +5,7 @@
 
 from typing import Any, Dict, List
 import random
+import copy
 import os
 import sys
 import torch
@@ -209,12 +210,41 @@ class ImageClassificationDataset(Dataset):
 
                 features = data["features"]
                 num_boxes = data["num_boxes"] 
+                g_feat = np.sum(features, axis=0) / num_boxes
                 boxes = data["boxes"]      # Read image features
+                image_w = data["img_w"]
+                image_h = data["img_h"]
         
+                features = np.concatenate(
+                    [np.expand_dims(g_feat, axis=0), features], axis=0
+                )
+
+                num_boxes = num_boxes + 1
+
+                image_location = np.zeros((boxes.shape[0],5), dtype=np.float32)
+                image_location[:,:4] = boxes
+                image_location[:,4] = (
+                    (image_location[:,3] - image_location[:,1])
+                    * (image_location[:,2] - image_location[:,0])
+                    / (float(image_w) * float(image_h))
+                )
+
+                image_location_ori = copy.deepcopy(image_location)
+                image_location[:,0] = image_location[:,0] / float(image_w)
+                image_location[:,1] = image_location[:,1] / float(image_h)
+                image_location[:,2] = image_location[:,2] / float(image_w)
+                image_location[:,3] = image_location[:,3] / float(image_h)
+
+                g_location = np.array([0,0,1,1,1])
+                image_location = np.concatenate(
+                    [np.expand_dims(g_location, axis=0), image_location], axis=0
+                )
+
+                boxes = image_location
 
         # Preprocess visual features with masks and padding and stuff
         mix_num_boxes = min(int(num_boxes), self._max_region_num)               # Things for image masks and stuff 
-        mix_boxes_pad = np.zeros((self._max_region_num, 4))
+        mix_boxes_pad = np.zeros((self._max_region_num, 5))
         mix_features_pad = np.zeros((self._max_region_num, 2048))
 
         image_mask = [1] * (int(mix_num_boxes))
