@@ -31,10 +31,10 @@ class ALBEF(nn.Module):
         self.text_encoder = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False)          
 
         self.cls_head = nn.Sequential(
-                  nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
+                  nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size * 2),
                   nn.GELU(),
-                  nn.LayerNorm(self.text_encoder.config.hidden_size,eps=1e-6),
-                  nn.Linear(self.text_encoder.config.hidden_size, num_labels)
+                  nn.LayerNorm(self.text_encoder.config.hidden_size * 2,eps=1e-6),
+                  nn.Linear(self.text_encoder.config.hidden_size * 2, num_labels)
                 )
         
 

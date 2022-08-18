@@ -455,8 +455,8 @@ def main():
 
                 top1 = torch.topk(output,1)[1].squeeze(1)
                 corrects = (torch.eq(top1,label).sum() / len(label)).detach()
-                dist.all_reduce(corrects)
-                accuracyitem = corrects.item()/n_gpu
+
+                accuracyitem = corrects
                 accuracy_running +=accuracyitem
 
             
@@ -467,12 +467,14 @@ def main():
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
+            dist.all_reduce(accuracy_running)
+            accuracy_running = accuracy_running.item() /n_gpu
             epochAccuracy = accuracy_running/len(trainDL)
             trainingLoss.append(epochLoss)
             accuracyTrain.append(epochAccuracy)
 
             if is_main_process() or not DISTRIBUTED:
-                print(f"epoch loss: {epochLoss}")
+                print(f"epoch loss: {epochLoss}, accuracy: {epochAccuracy}")
 
             
             if DISTRIBUTED:
@@ -516,8 +518,7 @@ def main():
 
                 top1 = torch.topk(output,1)[1].squeeze(1)
                 correctsval = (torch.eq(top1,label).sum() / len(label)).detach()
-                dist.all_reduce(correctsval)
-                accuracyitem = correctsval.item()/n_gpu
+                accuracyitem = correctsval
                 accuracy_running_val +=accuracyitem
 
             
@@ -525,12 +526,15 @@ def main():
             # Calculate the avg loss of the validation epoch and append it to list 
             epochLossVal = running_loss_val/len(valDL)
             valLoss.append(epochLossVal)
-
+            dist.all_reduce(accuracy_running_val)
+            accuracy_running_val = accuracy_running_val.item() / n_gpu
             accuracyEpochVal = accuracy_running_val/len(valDL)
             valAccuracy.append(accuracyEpochVal)
 
             reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
 
+            if is_main_process() or not DISTRIBUTED:
+                print(f"val loss: {epochLossVal}, accuracy: {accuracyEpochVal}")
             # Update the progress bar 
             if is_main_process() or not DISTRIBUTED:
                 pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
