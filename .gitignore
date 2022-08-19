@@ -2,6 +2,7 @@
 *.txt
 *.json
 runs/
+*.bin
 pretrained/
 *.tsv
 *.arrow

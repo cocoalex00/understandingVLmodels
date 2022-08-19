@@ -14,7 +14,7 @@ from .vilbert import VILBertForVLTasks, BertConfig, BertLayerNorm , GeLU
 
 class VILBertForRetrieval(torch.nn.Module):
 
-    def __init__(self,config_file,from_pretrained, default_gpu=True):
+    def __init__(self,config_file,from_pretrained,device, default_gpu=True):
         """ Vilbert Model adapted to perform image classification.
 
             config_file: path to the json file containing BERT's configuration
@@ -30,7 +30,7 @@ class VILBertForRetrieval(torch.nn.Module):
             from_pretrained,
             config=self.config,
             num_labels=1,
-            default_gpu=default_gpu,
+            device=device,
         )
 
         # Last fully connected layer (design taken from original paper)
@@ -61,7 +61,7 @@ class VILBertForRetrieval(torch.nn.Module):
             input_txt, input_imgs, image_loc, token_type_ids, attention_mask, image_attention_mask, co_attention_mask, task_ids, output_all_encoded_layers, output_all_attention_masks,
         )
 
-        # get image logits (use visual pooled output which is an overall represerntation of the image features)
+        # alignmnent logits (use overall pooled output which is an overall represerntation of the input)
         #print(pooled_output)
         alignment_logits= self.ImageClassifFC(pooled_output)
         

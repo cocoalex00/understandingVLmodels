@@ -350,6 +350,42 @@ class IMG_ClassificationProcessor(DataProcessor):
             examples.append(InputInstance(guid=guid, text_a=text, text_b=None, label=label, score=None, img_key=img_key, q_id=None))
         return examples
 
+class PlacesRetrievalProcessor(DataProcessor):
+    """ Processor for the Places365 data set retrieval). """
+
+    def get_train_examples(self, data_dir, file_name):
+        """ See base class."""
+
+        lines = json.load(open(os.path.join(data_dir, file_name)))
+        return self._create_examples(lines, "train")
+
+    def get_dev_examples(self, data_dir, file_name):
+        """ See base class."""
+
+        lines = json.load(open(os.path.join(data_dir, file_name)))
+        return self._create_examples(lines, "dev")
+
+    def get_test_examples(self, data_dir, file_name):
+        """ See base class."""
+
+        lines = json.load(open(os.path.join(data_dir, file_name)))
+        return self._create_examples(lines, "test")
+
+    def _create_examples(self, lines, set_type):
+        """ Creates examples for the training and dev sets. """
+
+        examples = []
+        for (i, line) in enumerate(lines):
+            #if set_type!='test': continue
+
+            guid = "%s-%s" % (set_type, str(i))
+            text = "[CLS] [SEP]" 
+            label = None if set_type == "test" else line['label']
+            img_key = line['img_name']
+            examples.append(InputInstance(guid=guid, text_a=text, text_b=None, label=label, score=None, img_key=img_key, q_id=None))
+        return examples
+
+
 class VCR_QA_R_Processor(DataProcessor):
     """ Processor for the VCR (qa -> r) QA_R data set. """
 
@@ -608,6 +644,7 @@ processors = {
     "vcr_qa_r": VCR_QA_R_Processor,
     "vcr_qar": VCR_QAR_Processor,
     "places": IMG_ClassificationProcessor,
+    "placesret": IMG_ClassificationProcessor,
 }
 
 output_modes = {

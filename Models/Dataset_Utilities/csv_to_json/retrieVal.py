@@ -12,6 +12,7 @@ import json
 from argparse import ArgumentParser
 import pandas as pd
 from tqdm import tqdm 
+import random
 
 
 
@@ -27,7 +28,7 @@ def _load_dataset(annotations_path,split="train"):
     count = 0
     rootpathtrain = "/mnt/fast/nobackup/scratch4weeks/ah02299/trainshmol/data_256"
     rootpathval = "/vol/teaching/HernandezDiazProject/Data/Places365/val_256/"
-    rootpathtest = "/mnt/fast/nobackup/scratch4weeks/ah02299/trainshmol/data_256"
+    rootpathtest = "/vol/teaching/HernandezDiazProject/Data/Places365/test_256"
     newdata = []
     for index, data in tqdm(df.iterrows()):
 
@@ -37,6 +38,7 @@ def _load_dataset(annotations_path,split="train"):
             name = rootpathval + str(data[0])  
         elif split == "test":
             name = rootpathtest + str(data[0])  
+        
 
 
         count += 1
@@ -44,7 +46,14 @@ def _load_dataset(annotations_path,split="train"):
         temp["id"] = count
         temp["img_path"] = str(data[0])
         #if split != "test":
-        temp["label"] = int(data[1])
+        if random.choice([0,1]) == 1:
+            temp["label"] = 0
+            temp["classindex"] = random.choice(list(set(range(0, 364)) - set([int(data[1])])))
+        else:
+            temp["label"] = 1
+            temp["classindex"] = int(data[1])
+
+
         temp["img_name"] = name.replace("/","-").split(".")[0]
 
         newdata.append(temp)
@@ -57,19 +66,19 @@ def main():
     parser.add_argument(
         "--annotations_path",
         type= str,
-        default= "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/csv_to_json/places365_test_alexsplit.txt",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/csv_to_json/places365_val.txt",
         help="Path to the csv file to process"
     )
     parser.add_argument(
         "--out_path",
         type= str,
-        default= "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/csv_to_json/places365_test_alexsplit",
+        default = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Dataset_Utilities/csv_to_json/places365_retrieVal.json",
         help="Path to the json file to output"
     )
     parser.add_argument(
         "--split",
         type= str,
-        default="test",
+        default = "val",
         help="split of the dataset being processed"
     )
     args = parser.parse_args()

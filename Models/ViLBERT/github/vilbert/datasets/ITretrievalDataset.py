@@ -3,6 +3,7 @@
 # This source code implements the dataset class necessary to fine-tune ViLBERT to an image classification task.
 #   - The textual input to the model is "[CLS][SEP]", to denote that there is absence of it while making use of the special tokens used in its pre-training
 
+import copy
 from typing import Any, Dict, List
 import random
 import os
@@ -78,44 +79,6 @@ def _load_dataset(annotations_path):
         entries.append(_create_entry(item))
     return entries
 
-
-def get_data_loader(annotations_jsonpath: str, labels_path:str, TSV_path: str, batch_size: int = 16, max_region_num: int=37, shuffle: bool=True, multi_gpu: bool=False, test: bool= False):
-    """Get a data loader ready from a lmdb and jasonline files
-
-    annotations_jsonpath: path to the jsonline file for the dataset
-    TSV_path: path to TSV file containing the image features
-    batch_size: number of samples in each batch 
-    max_region_num: no idea
-    shuffle: suffle the dataset or not
-    """
-
-    #Create the feature reader and dataset
-
-    dataset = ImageClassificationDataset(annotations_jsonpath, labels_path, TSV_path, max_region_num,test)
-
-    if multi_gpu:
-        sampler = DistributedSampler(dataset=dataset)
-
-        dataloader = DataLoader(
-            dataset,
-            shuffle=shuffle,
-            batch_size=batch_size,
-            num_workers=2,
-            pin_memory=True,
-            sampler=sampler
-        )
-    else:
-        dataloader = DataLoader(
-            dataset,
-            shuffle=shuffle,
-            batch_size=batch_size,
-            num_workers=2,
-            pin_memory=True,
-        )
-
-    return dataloader
-    
-
  
 
  ############################ DATASET CLASS #######################################
@@ -155,7 +118,6 @@ class ITretrievalPlaces(Dataset):
         for entry in self.labels_to_text:
             tokens = self._tokenizer.tokenize(entry)
             tokens = tokens[: max_length - 2]
-            print(tokens)
             tokens = [["CLS"]] + tokens + [["SEP"]]
             #print(tokens)
 
@@ -165,8 +127,7 @@ class ITretrievalPlaces(Dataset):
             # ]
 
             tokens = self._tokenizer.encode(entry)
-            print("tokens")
-            print(tokens)
+
             #tokens = tokens[: max_length - 2]
             
 
@@ -216,11 +177,41 @@ class ITretrievalPlaces(Dataset):
                 features = data["features"]
                 num_boxes = data["num_boxes"] 
                 boxes = data["boxes"]      # Read image features
+                g_feat = np.sum(features, axis=0) / num_boxes
+                boxes = data["boxes"]      # Read image features
+                image_w = data["img_w"]
+                image_h = data["img_h"]
         
+                features = np.concatenate(
+                    [np.expand_dims(g_feat, axis=0), features], axis=0
+                )
+
+                num_boxes = num_boxes + 1
+
+                image_location = np.zeros((boxes.shape[0],5), dtype=np.float32)
+                image_location[:,:4] = boxes
+                image_location[:,4] = (
+                    (image_location[:,3] - image_location[:,1])
+                    * (image_location[:,2] - image_location[:,0])
+                    / (float(image_w) * float(image_h))
+                )
+
+                image_location_ori = copy.deepcopy(image_location)
+                image_location[:,0] = image_location[:,0] / float(image_w)
+                image_location[:,1] = image_location[:,1] / float(image_h)
+                image_location[:,2] = image_location[:,2] / float(image_w)
+                image_location[:,3] = image_location[:,3] / float(image_h)
+
+                g_location = np.array([0,0,1,1,1])
+                image_location = np.concatenate(
+                    [np.expand_dims(g_location, axis=0), image_location], axis=0
+                )
+
+                boxes = image_location
 
         # Preprocess visual features with masks and padding and stuff
         mix_num_boxes = min(int(num_boxes), self._max_region_num)               # Things for image masks and stuff 
-        mix_boxes_pad = np.zeros((self._max_region_num, 4))
+        mix_boxes_pad = np.zeros((self._max_region_num, 5))
         mix_features_pad = np.zeros((self._max_region_num, 2048))
 
         image_mask = [1] * (int(mix_num_boxes))
