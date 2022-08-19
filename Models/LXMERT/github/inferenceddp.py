@@ -124,8 +124,8 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--from_pretrained",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
+        "--checkpoint_dir",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/imgClf/out50",
         type=str,
         help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part"
     )
@@ -133,7 +133,7 @@ def main():
     parser.add_argument(
         "--annotTest",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/totest.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_test_alexsplit.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
@@ -144,7 +144,7 @@ def main():
     parser.add_argument(
         "--tsv_test",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/train/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     ####
@@ -156,14 +156,14 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/imgClf/out",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/imgClf/out50",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=200,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
@@ -232,15 +232,15 @@ def main():
     model = imgClassifModel(args.num_labels)
 
 
-    if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointLXMERT.pth")):
+    if os.path.exists(os.path.join(args.checkpoint_dir,"LXMERTFineTuned.pth")):
         if is_main_process() or not DISTRIBUTED:
             print(f"Checkpoint found, loading")
 
-        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointLXMERT.pth"), map_location=device)
+        checkpoint = torch.load(os.path.join(args.checkpoint_dir,"LXMERTFineTuned.pth"), map_location=device)
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         if is_main_process() or not DISTRIBUTED:
@@ -327,7 +327,7 @@ def main():
             correctOnes += correctsval
 
             if is_main_process() or not DISTRIBUTED:
-                print(lossitem)
+                print(f"batch {i}: loss {lossitem}")
     
         if DISTRIBUTED: 
             dist.all_reduce(correctOnes)

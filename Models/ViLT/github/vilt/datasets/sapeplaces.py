@@ -4,7 +4,7 @@ import io
 import pyarrow as pa
 import os
 
-from typing_extensions import Self
+#from typing_extensions import Self
 from PIL import Image
 from vilt.transforms import keys_to_transforms, pixelbert
 import numpy as np

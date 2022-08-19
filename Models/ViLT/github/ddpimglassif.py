@@ -133,13 +133,15 @@ def main(_config):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--pretrained",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+       # default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
         type=str,
         help="Path to the checkpoint file containing the model's weights and stuff",
     )
     parser.add_argument(
         "--data_path",
-        default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
+       #default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/arrowfiles",
         type=str,
         help="Path to the folder where the dataset file (.arrow) lives",
     )
@@ -152,13 +154,14 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outfull",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/ViLT/imgClf/outfull",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsfull",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/ViLT/imgClf/checkpointsfull",
+        
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
