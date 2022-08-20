@@ -89,9 +89,9 @@ def load_obj_tsv(fname, topk=None):
 def _load_dataset(args, name,val=False):
     processor = processors[args.task_name]()
     if name == 'train':
-        examples = processor.get_train_examples(args.data_dir,'places365_val.json')
+        examples = processor.get_train_examples(args.data_dir,'places365_train_alexsplit.json')
     elif name == 'val':
-        examples = processor.get_dev_examples(args.data_dir, 'retrieVal.json',val)
+        examples = processor.get_dev_examples(args.data_dir, 'places365_retrieVal.json',val)
     elif name == 'test':
         examples = processor.get_dev_examples(args.data_dir, 'places365_test_small.json')
     return examples

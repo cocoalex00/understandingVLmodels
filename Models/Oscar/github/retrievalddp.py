@@ -126,12 +126,12 @@ def main():
     parser = argparse.ArgumentParser()
 
     # ARGUMENTS NEEDED FOR THE MODEL
-    parser.add_argument("--data_dir", default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/", type=str,
+    parser.add_argument("--data_dir", default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/", type=str,
                         help="The input data dir. Should contain the .json files for the task.")
     parser.add_argument("--model_type", default="bert", type=str,
                         help="Model type selected in the list: ")
-    #parser.add_argument("--model_name_or_path", default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/Oscar/github/pretrained/base-vg-labels/ep_107_1192087", type=str,
-    parser.add_argument("--model_name_or_path", default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Oscar/github/pretrained/base-vg-labels/ep_107_1192087", type=str,
+    parser.add_argument("--model_name_or_path", default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/Oscar/github/pretrained/base-vg-labels/ep_107_1192087", type=str,
+    #parser.add_argument("--model_name_or_path", default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Oscar/github/pretrained/base-vg-labels/ep_107_1192087", type=str,
                         help="Path to pre-trained model or shortcut name selected in the list: ")
     parser.add_argument("--task_name", default="places", type=str, 
                         help="The name of the task to train selected in the list: ")
@@ -157,13 +157,13 @@ def main():
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/train/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--tsv_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
     parser.add_argument(
@@ -174,26 +174,26 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/Oscar/ret/out",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/Oscar/ret/out",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/Oscar/ret/checkpoints",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/Oscar/ret/checkpoins",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=40,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -218,7 +218,7 @@ def main():
     parser.add_argument(
         "--labels_path",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/retrieval_labels.txt",
         help="Path to the txt file containing the labels"
     )
 

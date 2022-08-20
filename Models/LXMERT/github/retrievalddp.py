@@ -126,8 +126,8 @@ def main():
 
     parser.add_argument(
         "--from_pretrained",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/LXMERT/github/snap/pretrained/model",
+       # default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/LXMERT/github/snap/pretrained/model",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/LXMERT/github/snap/pretrained/model",
         type=str,
         help="PATH to the .pth file contatining the pre-trained weights. Ojo, the function loads it like 'Path + _LXRT.pth' so omit that part"
     )
@@ -135,14 +135,14 @@ def main():
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_train_alexsplit.json",
+       # default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_train_alexsplit.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--labels_path",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/retrieval_labels.txt",
         help="Path to the txt file containing the labels"
     )
     parser.add_argument(
@@ -152,49 +152,50 @@ def main():
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieVal.json",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_retrieVal.json",
+       
+       #default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieVal.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_retrieVal.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/train/",
+       #k default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/train/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
         "--tsv_val",
         type=str,
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/val/",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/val/",
+        #default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (validation)"
     )
     ####
     parser.add_argument(
         "--num_labels",
-        default=365,
+        default=1,
         type=int,
         help="Number of classes in the dataset"
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/ret/out",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/ret/out50",
+        #default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/ret/out",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/ret/out50",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/ret/checkpoints",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/ret/checkpoints50",
+       # default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/LXMERT/ret/checkpoints",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/LXMERT/ret/checkpoints50",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(

@@ -35,7 +35,7 @@ def make_arrow(root, dataset_root,split):
         val = False
 
     elif split =="val":
-        val_data = json.load(open(f"{root}/retrieVal.json"))
+        val_data = json.load(open(f"{root}/places365_retrieVal.json"))
         val = True
         
 
@@ -88,12 +88,12 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--dataset_root",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Places365/val_256/",
         type=str,
     )
     parser.add_argument(
         "--root",
-        default= "/mnt/c/Users/aleja/Desktop/MSc Project/images",
+        default= "/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/",
         type=str,
     )
 

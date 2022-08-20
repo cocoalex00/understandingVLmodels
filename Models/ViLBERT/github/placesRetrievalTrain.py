@@ -99,15 +99,20 @@ def main():
         "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.",
     )
     parser.add_argument(
+        "--local_rank",
+        type=int,
+    )
+    parser.add_argument(
         "--from_pretrained",
-        default="bert-base-uncased",
+        #default= "bert-base-uncased",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/ViLBERT/github/save/pretrained_model.bin",
         type=str,
         help="Bert pre-trained model selected in the list: bert-base-uncased, "
         "bert-large-uncased, bert-base-cased, bert-base-multilingual, bert-base-chinese.",
     )
     parser.add_argument(    
         "--config_file",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLBERT/github/config/bert_base_6layer_6conect.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/ViLBERT/github/config/bert_base_6layer_6conect.json",
         type=str,
         help="The config file which specified the model details.",
     )
@@ -115,19 +120,20 @@ def main():
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_train_alexsplit.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/jsonfiles/places365_retrieVal.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--tsv_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/train/",
+       # default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/val/",
         help="Path to the tsv file containing the features of the dataset (train)"
     )
     parser.add_argument(
@@ -158,13 +164,13 @@ def main():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=16,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=50,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
@@ -189,7 +195,7 @@ def main():
     parser.add_argument(
         "--labels_path",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/Utilities/retrieval_labels.txt",
         help="random seed for initialisation in multiple GPUs"
     )
 

@@ -134,15 +134,15 @@ def main(_config):
     parser.add_argument(
         "--pretrained",
        # default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
-        default= "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+       # default= "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
         type=str,
         help="Path to the checkpoint file containing the model's weights and stuff",
     )
     parser.add_argument(
         "--data_path",
         #default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/arrowfiles",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/arrowfiles",
         default= "/mnt/c/Users/aleja/Desktop/MSc Project/totest",
         type=str,
         help="Path to the folder where the dataset file (.arrow) lives",
@@ -162,22 +162,22 @@ def main(_config):
     )
     parser.add_argument(
         "--output_dir",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/ViLT/ret/outfull",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/ret/outfull",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/ViLT/ret/outfull",
+        #default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/ret/outfull",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--checkpoint_dir",
-        #default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/ViLT/ret/checkpointsfull",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/ret/checkpointsfull",
+        default="/mnt/fast/nobackup/scratch4weeks/ah02299/understandingVLmodels/Experiments/ViLT/ret/checkpointsfull",
+        #default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ViLT/ret/checkpointsfull",
         type=str,
         help="The output directory where the training checkpoints will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
