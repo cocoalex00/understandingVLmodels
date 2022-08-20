@@ -324,30 +324,41 @@ class IMG_ClassificationProcessor(DataProcessor):
         lines = json.load(open(os.path.join(data_dir, file_name)))
         return self._create_examples(lines, "train")
 
-    def get_dev_examples(self, data_dir, file_name):
+    def get_dev_examples(self, data_dir, file_name,val=False):
         """ See base class."""
 
         lines = json.load(open(os.path.join(data_dir, file_name)))
-        return self._create_examples(lines, "dev")
+        return self._create_examples(lines, "dev",val)
 
-    def get_test_examples(self, data_dir, file_name):
+    def get_test_examples(self, data_dir, file_name,val):
         """ See base class."""
 
         lines = json.load(open(os.path.join(data_dir, file_name)))
         return self._create_examples(lines, "test")
 
-    def _create_examples(self, lines, set_type):
+    def _create_examples(self, lines, set_type,val=False):
         """ Creates examples for the training and dev sets. """
 
         examples = []
-        for (i, line) in enumerate(lines):
-            #if set_type!='test': continue
+        if not val:
+            for (i, line) in enumerate(lines):
+                #if set_type!='test': continue
 
-            guid = "%s-%s" % (set_type, str(i))
-            text = "[CLS] [SEP]" 
-            label = None if set_type == "test" else line['label']
-            img_key = line['img_name']
-            examples.append(InputInstance(guid=guid, text_a=text, text_b=None, label=label, score=None, img_key=img_key, q_id=None))
+                guid = "%s-%s" % (set_type, str(i))
+                text = "[CLS] [SEP]" 
+                label = None if set_type == "test" else line['label']
+                img_key = line['img_name']
+                examples.append(InputInstance(guid=guid, text_a=text, text_b=None, label=label, score=None, img_key=img_key, q_id=None))
+        else:
+            for (i, line) in enumerate(lines):
+                #if set_type!='test': continue
+
+                guid = "%s-%s" % (set_type, str(i))
+                text = int(line["classindex"])
+                label =  int(line['label'])
+                img_key = line['img_name']
+                examples.append(InputInstance(guid=guid, text_a=text, text_b=None, label=label, score=None, img_key=img_key, q_id=None))
+            
         return examples
 
 class PlacesRetrievalProcessor(DataProcessor):

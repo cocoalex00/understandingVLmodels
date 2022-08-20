@@ -86,12 +86,12 @@ def load_obj_tsv(fname, topk=None):
 
 
 
-def _load_dataset(args, name):
+def _load_dataset(args, name,val=False):
     processor = processors[args.task_name]()
     if name == 'train':
-        examples = processor.get_train_examples(args.data_dir,'places365_train_alexsplit.json')
+        examples = processor.get_train_examples(args.data_dir,'places365_val.json')
     elif name == 'val':
-        examples = processor.get_dev_examples(args.data_dir, 'places365_retrieVal.json')
+        examples = processor.get_dev_examples(args.data_dir, 'retrieVal.json',val)
     elif name == 'test':
         examples = processor.get_dev_examples(args.data_dir, 'places365_test_small.json')
     return examples
@@ -99,23 +99,20 @@ def _load_dataset(args, name):
 class Places365(Dataset):
     """ Places365 Dataset """
 
-    def __init__(self, args, name, img_features_path, tokenizer,labelsPath):
+    def __init__(self, args, name, img_features_path, tokenizer,labelsPath,val= False):
         super(Places365, self).__init__()
         assert name in ['train', 'val',"test"]
 
         # Convert to dictionary 
         self.img_features_path = img_features_path
-        # self.imgid2img = {}
-        # for img_datum in self.img_featuresList:
-        #     self.imgid2img[img_datum['img_id']] = img_datum
+        self.val = val
 
-        #self.output_mode = output_modes[args.task_name]
         self.tokenizer = tokenizer
         self.args = args
         self.name = name
-        self.labels_to_text = pd.read_csv(labels_path, header=None, delimiter = "/")[0].values.tolist()
+        self.labels_to_text = pd.read_csv(labelsPath, header=None, delimiter = "/")[0].values.tolist()
 
-        self.examples = _load_dataset(args, name)
+        self.examples = _load_dataset(args, name,val)
 
         logger.info('%s Data Examples: %d' % (name, len(self.examples)))
 
@@ -124,20 +121,44 @@ class Places365(Dataset):
                     sequence_a_segment_id=0, sequence_b_segment_id=1,
                     cls_token_segment_id=1, pad_token_segment_id=0,
                     mask_padding_with_zero=True):
-        
-        tokens= self.tokenizer.tokenize(example.text_a)   # Tokens are only [CLS] [SEP]
-        segment_ids = [sequence_a_segment_id] * (len(tokens) - 1)
+
+        # The negative and positive pairs are set for the validation 
+        if self.val == True:
+            text = self.labels_to_text[example.text_a]
+            label_id = example.label
+        else:
+        # the positive and negative pairs are chosen randomly during training
+            if random.choice([0,1]) == 1:
+                text = self.labels_to_text[example.label]
+                label_id = 1
+            else:
+                randomID = random.choice(list(set(range(0, 364)) - set([example.label])))
+                text = self.labels_to_text[randomID]
+                label_id = 0
+    
+        # tokenize sentence
+        tokens= self.tokenizer.tokenize(text)   # Tokens are only [CLS] [SEP]
+
+        # Check if larger than maxlength
+        if len(tokens) > self.args.max_seq_length - 2:
+                tokens = tokens[:(self.args.max_seq_length - 2)]
+
+        # Add separator tokens to tokens and create the segment ids
+        tokens = tokens + [sep_token]
+        segment_ids = [sequence_a_segment_id] * len(tokens)
+
+        # add class token to the tokens string and to the segment ids
+        tokens = [cls_token] + tokens
         segment_ids = [cls_token_segment_id] + segment_ids
 
+        # Convert the tokenized sentence to ids 
         input_ids = self.tokenizer.convert_tokens_to_ids(tokens)
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real tokens are attended to.
         input_mask = [1 if mask_padding_with_zero else 0] * len(input_ids)
 
-        label_id = example.label
 
-        # No zero padding since all sequences are the same.
-
+        # No zero padding to the right 
         padding_length = self.args.max_seq_length - len(input_ids)
         input_ids = input_ids + ([pad_token] * padding_length)
         input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)

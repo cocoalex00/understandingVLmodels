@@ -47,7 +47,7 @@ FIELDNAMES = ["img_id", "img_h", "img_w", "objects_id", "objects_conf",
 
 
 
-def _load_dataset(annotations_path):  
+def _load_dataset(annotations_path,val):  
     """Load entries from a jsonline file
 
     dataroot: root path of dataset
@@ -58,21 +58,39 @@ def _load_dataset(annotations_path):
 
         items = []
         count = 0
-        for annotation in json.load(reader):
-            dictionary = {}
-            dictionary["id"] = int(annotation["id"])
-            dictionary["img_path"] = str(annotation["img_path"])
-            dictionary["label"] = int(annotation["label"])
-            # "[CLS] [SEP]" == [101, 102] when encoded by bert tokenizer
-            dictionary["text_input"] = [101,102]
+        if val:
+            for annotation in json.load(reader):
+                dictionary = {}
+                dictionary["id"] = int(annotation["id"])
+                dictionary["img_path"] = str(annotation["img_path"])
+                dictionary["label"] = int(annotation["label"])
+                # "[CLS] [SEP]" == [101, 102] when encoded by bert tokenizer
+                dictionary["text_input"] = int(annotation["classindex"])
 
-            ### FIND OUT REAL NAME OF FILES FOR SERVER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-            dictionary["db_id"] = str(annotation["img_name"])
+                ### FIND OUT REAL NAME OF FILES FOR SERVER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                dictionary["db_id"] = str(annotation["img_name"])
 
-            dictionary["input_mask"] = [1] * len(dictionary["text_input"])
-            dictionary["segment_ids"] = [0] * len(dictionary["text_input"])
-            items.append(dictionary)
-            count += 1
+                
+                dictionary["input_mask"] = None
+                dictionary["segment_ids"] = None
+                items.append(dictionary)
+                count += 1
+        else:
+            for annotation in json.load(reader):
+                dictionary = {}
+                dictionary["id"] = int(annotation["id"])
+                dictionary["img_path"] = str(annotation["img_path"])
+                dictionary["label"] = int(annotation["label"])
+                # "[CLS] [SEP]" == [101, 102] when encoded by bert tokenizer
+                dictionary["text_input"] = [101,102]
+
+                ### FIND OUT REAL NAME OF FILES FOR SERVER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                dictionary["db_id"] = str(annotation["img_name"])
+
+                dictionary["input_mask"] = [1] * len(dictionary["text_input"])
+                dictionary["segment_ids"] = [0] * len(dictionary["text_input"])
+                items.append(dictionary)
+                count += 1
             
     entries = []
     for item in items:
@@ -91,17 +109,17 @@ class ITretrievalPlaces(Dataset):
         TSV_path,
         #image_features_reader: ImageFeaturesH5Reader,
         max_region_num: int = 37,
-        test: bool=False,
+        val: bool=False,
         padding_index = 0
         
     ):
         super().__init__()
         self._max_region_num = max_region_num
         self.num_labels = 365
-        self.entries = _load_dataset(annotations_jsonpath)
+        self.entries = _load_dataset(annotations_jsonpath,val)
         self.tsvroot = TSV_path
 
-        self.test = test
+        self.val = val
         self.labels_to_text = pd.read_csv(labels_path, header=None, delimiter = "/")[0].values.tolist()
         self._tokenizer = BertTokenizer.from_pretrained("bert-base-uncased", do_lower_case=True)
         self.tokenized_labels = []
@@ -141,7 +159,6 @@ class ITretrievalPlaces(Dataset):
                 input_mask += padding
                 segment_ids += padding
 
-            #assert(len(tokens), max_length)
             self.tokenized_labels.append([tokens,input_mask,segment_ids])
 
 
@@ -227,32 +244,30 @@ class ITretrievalPlaces(Dataset):
         
 
         co_attention_mask = torch.zeros((self._max_region_num, 30))
-        #print(co_attention_mask)
-                                  # One-hot vector of the entry's target
 
-        # if not self.test:
-        #     labels = entry["label"]
-        # else: 
-        #     labels = None
-        
-        # if labels is not None:
-        #     target.scatter_(0, torch.tensor(labels), 1)
-        # else:
-        #     target = 0
+
+
 
         # Text part 
         # Randomly select either the correct text or a random incorrect one
-        if random.choice([0,1]) == 1:
-            textInput = torch.tensor(self.tokenized_labels[entry["label"]][0])
-            input_mask = torch.tensor(self.tokenized_labels[entry["label"]][1])
-            segment_ids = torch.tensor(self.tokenized_labels[entry["label"]][2])
-            target = 1
+        # while validating, the negative/positive pairs are pre-selected to keep track of how good the model is 
+        if not self.val:
+            if random.choice([0,1]) == 1:
+                textInput = torch.tensor(self.tokenized_labels[entry["label"]][0])
+                input_mask = torch.tensor(self.tokenized_labels[entry["label"]][1])
+                segment_ids = torch.tensor(self.tokenized_labels[entry["label"]][2])
+                target = 1
+            else:
+                randomID = random.choice(list(set(range(0, 364)) - set([entry["label"]])))
+                textInput = torch.tensor(self.tokenized_labels[randomID][0])
+                input_mask = torch.tensor(self.tokenized_labels[randomID][1])
+                segment_ids = torch.tensor(self.tokenized_labels[randomID][2])
+                target = 0
         else:
-            randomID = random.choice(list(set(range(0, 364)) - set([entry["label"]])))
-            textInput = torch.tensor(self.tokenized_labels[randomID][0])
-            input_mask = torch.tensor(self.tokenized_labels[randomID][1])
-            segment_ids = torch.tensor(self.tokenized_labels[randomID][2])
-            target = 0
+                textInput = torch.tensor(self.tokenized_labels[entry["text_input"]][0])
+                input_mask = torch.tensor(self.tokenized_labels[entry["text_input"]][1])
+                segment_ids = torch.tensor(self.tokenized_labels[entry["text_input"]][2])
+                target = int(entry["label"])
 
         return (
             textInput,

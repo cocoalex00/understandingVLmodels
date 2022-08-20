@@ -167,7 +167,7 @@ def main():
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieVal.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
@@ -267,11 +267,11 @@ def main():
         print("## Loading the dataset ##")
 
     trainDataset = ITretrievalPlaces(args.annotTrain,args.labels_path,  args.tsv_train, 36,False)
-    #valDataset = ITretrievalPlaces(args.annotVal,  args.tsv_val, 36,False)
+    valDataset = ITretrievalPlaces(args.annotVal,args.labels_path,args.tsv_val, 36,True)
 
     if DISTRIBUTED:
         trainsampler = DistributedSampler(dataset=trainDataset, shuffle=True)   
-        #valsampler = DistributedSampler(dataset=valDataset, shuffle=True) 
+        valsampler = DistributedSampler(dataset=valDataset, shuffle=True) 
 
         trainDL = DataLoader(
             dataset= trainDataset,
@@ -280,13 +280,13 @@ def main():
             pin_memory=True,
             sampler=trainsampler
         )
-        # valDL = DataLoader(
-        #     dataset= valDataset,
-        #     batch_size= args.batch_size,
-        #     #shuffle= True,
-        #     pin_memory=True,
-        #     sampler= valsampler
-        # )
+        valDL = DataLoader(
+            dataset= valDataset,
+            batch_size= args.batch_size,
+            #shuffle= True,
+            pin_memory=True,
+            sampler= valsampler
+        )
     else:
         trainDL = DataLoader(
             dataset= trainDataset,
@@ -294,12 +294,12 @@ def main():
             shuffle= True,
             pin_memory=True
         )
-        # valDL = DataLoader(
-        #     dataset= valDataset,
-        #     batch_size= args.batch_size,
-        #     shuffle= True,
-        #     pin_memory=True
-        # )
+        valDL = DataLoader(
+            dataset= valDataset,
+            batch_size= args.batch_size,
+            shuffle= True,
+            pin_memory=True
+        )
 
 
     if is_main_process()  or not DISTRIBUTED:
@@ -360,33 +360,8 @@ def main():
     valLoss = []
     learningRate = []
     start_epoch = 0
-
-
-    # # Check for available checkpoints 
-    # if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointVilbert.pth")):
-    #     print(f"Checkpoint found, loading")
-    #     checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointVilbert.pth"))
-    #     start_epoch = checkpoint['current_epoch']
-    #     learningRate = checkpoint['lr']
-    #     trainingLoss = checkpoint['Tloss']
-    #     valLoss = checkpoint['Vloss']
-
-    #     # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
-    #     if isinstance(model, nn.DataParallel):
-    #         model.module.load_state_dict(checkpoint['model_checkpoint'])
-    #     else:
-    #         model.load_state_dict(checkpoint['model_checkpoint'])
-    #     optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
-    #     warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
-    #     reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
-
-
-    #     print("Checkpoint loaded")
-    # else:
-    #     print("No checkpoint found, starting fine tunning from base pre-trained model")
-
-    print(len(trainDataset
-    ))
+    accuracyTrain = []
+    valAccuracy = []
 
         ##################################################### Checkpoint or pre-trained ###################################################
     if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointVilbert.pth")):
@@ -414,7 +389,7 @@ def main():
         if is_main_process() or not DISTRIBUTED:
             print("No checkpoint found, starting fine tunning from base pre-trained model")
 
-    accuracyTrain = []
+  
 
    
 
@@ -452,8 +427,7 @@ def main():
                 with amp.autocast(): # Cast from f32 to f16 
                     outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask,co_attention_mask)  
                     # Calculate batch loss
-                    print(torch.squeeze(outputs))
-                    print(labels)
+
                     loss = criterion(outputs,torch.unsqueeze(labels,1))
                 # Add batch loss to list
 
@@ -489,7 +463,7 @@ def main():
 
 
                 if is_main_process() or not DISTRIBUTED:
-                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem},acc {accuracyitem}, learning rate {optimizer.param_groups[0]['lr']}")
+                    print(f"Epoch({epoch}) -> batch {i}, loss: {lossitem}, acc: {accuracyitem}, learning rate {optimizer.param_groups[0]['lr']}")
 
             # Calculate the avg loss of the training epoch and append it to list 
             epochLoss = running_loss_train/len(trainDL)
@@ -520,49 +494,58 @@ def main():
 
             ########################################### Validation  #####################################################
 
-            #model.eval() # Get model in eval mode
+            model.eval() # Get model in eval mode
 
-            # running_loss_val = 0 # Keep track of avg loss for each epoch (val)
-            # accuracy_running_val = 0 
-            # for i, batch in enumerate(valDL):
+            running_loss_val = 0 # Keep track of avg loss for each epoch (val)
+            accuracy_running_val = 0 
+            for i, batch in enumerate(valDL):
 
-            #     # Data related stuff
-            #     batch = [t.cuda(device=device, non_blocking=True) for t in batch]
-            #     textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, target = batch
-            #     #labels = torch.argmax(target,1)
-            #     labels = torch.tensor([t.type(torch.LongTensor)for t in labels], device=device)
+                # Data related stuff
+                batch = [t.cuda(device=device, non_blocking=True) for t in batch]
+                textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, labels = batch
+                #labels = torch.argmax(target,1)
+                labels = torch.tensor([t.type(torch.float32)for t in labels], device=device)
 
-            #     # Forward pass
-            #     with amp.autocast(): # Cast from f32 to f16 
-            #         outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask,co_attention_mask)
+                # Forward pass
+                with amp.autocast(): # Cast from f32 to f16 
+                    outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask,co_attention_mask)
                     
-            #         # Calculate batch loss 
-            #         loss = criterion(outputs,labels)
-            #     # Add loss to list (val)
-            #     lossitem = loss.detach()
-            #     dist.all_reduce(lossitem)
-            #     lossitem = lossitem.item()/n_gpu
-            #     running_loss_val += lossitem
+                    # Calculate batch loss 
+                    loss = criterion(outputs,torch.unsqueeze(labels,1))
+
+                lossitem = loss.detach()
+                if DISTRIBUTED:
+                    dist.all_reduce(lossitem)
+                    lossitem = lossitem.item()/n_gpu
+                else:
+                    lossitem = lossitem.item()
+                running_loss_val += lossitem
 
 
-            #     top1 = torch.topk(outputs,1)[1].squeeze(1)
-            #     correctsval = (torch.eq(top1,labels).sum() / len(labels)).detach()
+                predY = (torch.nn.functional.sigmoid(torch.squeeze(outputs)) > 0.5)
+                groundT = (labels == 1)
+                correctsval = (torch.eq(predY,groundT).sum() / len(labels)).detach()
+                accuracyitem = correctsval
+                accuracy_running_val +=accuracyitem
 
-            #     accuracyitem = correctsval
-            #     accuracy_running_val += accuracyitem
 
+            # Calculate the avg loss of the validation epoch and append it to list 
+            epochLossVal = running_loss_val/len(valDL)
+            valLoss.append(epochLossVal)
 
-            # # Calculate the avg loss of the validation epoch and append it to list 
-            # epochLossVal = running_loss_val/len(valDL)
-            # valLoss.append(epochLossVal)
+            if DISTRIBUTED:
+                dist.all_reduce(accuracy_running_val)
+                accuracy_running_val= accuracy_running_val.item() /n_gpu
+            else:
+                accuracy_running_val = accuracy_running_val.item()
+            accuracyEpochVal = accuracy_running_val/len(valDL)
+            valAccuracy.append(accuracyEpochVal)
 
-            # dist.all_reduce(accuracy_running_val)
-            # accuracy_running_val= accuracy_running_val.item() /n_gpu
-            # accuracyEpochVal = accuracy_running_val/len(valDL)
-            # valAccuracy.append(accuracyEpochVal)
+            if is_main_process() or not DISTRIBUTED:
+                print(f"validation accuracy: {accuracyEpochVal}")
 
-            # reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
-
+            reducelrScheduler.step(metrics=epochLossVal) # keep track of validation loss to reduce lr when necessary 
+            
             # Update the progress bar 
             if is_main_process() or not DISTRIBUTED:
                 pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
@@ -624,11 +607,15 @@ def main():
             write.writerow(learningRate)
             write.writerow(["Training loss over the epochs:"])
             write.writerow(trainingLoss)
+            write.writerow(["Validation loss over the epochs:"])
+            write.writerow(valLoss)
             write.writerow(["Training Acc over the epochs:"])
             write.writerow(accuracyTrain)
+            write.writerow(["Validation acc over the epochs:"])
+            write.writerow(valAccuracy)
             write.writerow(["--- stats ---"])
             write.writerow([f"Final training loss achieved {trainingLoss[len(trainingLoss)-1]}"])
-            #write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
+            write.writerow([f"Final validation loss achieved {valLoss[len(valLoss)-1]}"])
         
 if __name__=="__main__":
     main()

@@ -518,6 +518,7 @@ def main():
                 
                     # Calculate batch loss
                     loss = criterion(outputs,torch.unsqueeze(labelsTensor,1))
+    
                 # Add loss to list (val)
                 lossitem = loss.detach()
                 if DISTRIBUTED:

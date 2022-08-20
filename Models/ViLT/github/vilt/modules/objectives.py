@@ -297,6 +297,29 @@ def compute_imgcls(pl_module, batch):
 
     return ret
 
+def compute_placesRetrieval(pl_module, batch):
+    infer = pl_module.infer(batch, mask_text=False, mask_image=False)
+    retrieval_logits = pl_module.retrieval_fc(infer["cls_feats"])
+    retrieval_labels = batch["label"]
+    #imgcls_labels = torch.tensor(retrieval_labels).to(pl_module.device).long()
+    
+
+    ret = {
+        #"imgcls_loss": imgcls_loss,
+        "retrieval_logits": retrieval_logits,
+        "retrieval_labels": retrieval_labels,
+    }
+
+    phase = "train" if pl_module.training else "val"
+    #loss = getattr(pl_module, f"{phase}_imgcls_loss")(ret["imgcls_loss"])
+    #acc = getattr(pl_module, f"{phase}_imgcls_accuracy")(
+   #     ret["imgcls_logits"], ret["imgcls_labels"]
+    #)
+    #pl_module.log(f"imgcls/{phase}/loss", loss)
+   # pl_module.log(f"imgcls/{phase}/accuracy", acc)
+
+    return ret
+
 
 def compute_vqa(pl_module, batch):
     infer = pl_module.infer(batch, mask_text=False, mask_image=False)

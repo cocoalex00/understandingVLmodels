@@ -73,6 +73,15 @@ class ViLTransformerSS(pl.LightningModule):
                 nn.Linear(hs * 2, numClasses),
             )
 
+        # RETRIEVAL CLASSIFIER
+        self.retrieval_fc=nn.Sequential(
+                nn.Linear(hs, hs * 2),
+                nn.LayerNorm(hs * 2),
+                nn.GELU(),
+                nn.Linear(hs * 2, 1),
+            )
+        
+
         if self.hparams.config["loss_names"]["vqa"] > 0:
             vs = self.hparams.config["vqav2_label_size"]
             self.vqa_classifier = nn.Sequential(
@@ -224,6 +233,9 @@ class ViLTransformerSS(pl.LightningModule):
         
         if "places" in self.current_tasks:
             ret.update(objectives.compute_imgcls(self,batch))
+            
+        if "placesret" in self.current_tasks:
+            ret.update(objectives.compute_placesRetrieval(self,batch))
 
         return ret
 
