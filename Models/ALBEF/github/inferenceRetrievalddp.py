@@ -97,13 +97,19 @@ def process_metrics(fullGT, fullPreds):
         #Get topk predictions and their indices 
         topkPreds, indices = torch.topk(torch.tensor(predCat),10)
 
+        print(indices)
         #Get ground truth for the elements of the predicted indices
         gtretrieved = np.array(gtCat)[indices.tolist()]
+        print(gtretrieved)
         
         # get true positives of top 1, 5 and 10 results
         tp1 = np.sum(gtretrieved[0])
+        print(tp1)
+
         tp5 = np.sum(gtretrieved[:5])
+
         tp10 = np.sum(gtretrieved)
+        print(tp10)
 
         # Append precision and recal
         precisionAt1.append(tp1/1)
@@ -140,7 +146,8 @@ def main():
         "--pretrained",
         type=str,
         #default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
-        default = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
+        default= "/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ALBEF/github/pretrained/ALBEF.pth",
+        #default = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
         help="Path to the pth file that contains the model's checkpoint"
     )
     parser.add_argument(
@@ -151,19 +158,20 @@ def main():
         "--config",
         type=str,
         #default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
-        default= "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
+        default= "/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ALBEF/github/configs/Imgclf_places.yaml",
         help="Path to the config file for the task and model"
     )
     parser.add_argument(
         "--annotTest",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/vol/teaching/HernandezDiazProject/places365_test_10retrieval.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--root_test",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/",
+       # default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/",
+        default="/vol/teaching/HernandezDiazProject/Data/Places365/trainshmol/data_256/",
         help="Path to the images of the dataset (train)"
     )
     parser.add_argument(
@@ -174,14 +182,14 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Experiments/ALBEF/ret/out",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ALBEF/ret/out",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=365,
         help="The number of samples in each batch.",
     )
 
@@ -194,7 +202,7 @@ def main():
     parser.add_argument(
         "--labels_path",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
+        default="/vol/teaching/HernandezDiazProject/retrieval_labels.txt",
         help="random seed for initialisation in multiple GPUs"
     )
 
@@ -236,7 +244,7 @@ def main():
 
 
     if DISTRIBUTED:
-        testSampler = DistributedSampler(dataset=TestDataset, shuffle=True)   
+        testSampler = DistributedSampler(dataset=TestDataset, shuffle=False)   
        
 
         testDl = DataLoader(
@@ -294,7 +302,7 @@ def main():
 
 
 
-    model.requires_grad_(False)
+#    model.requires_grad_(False)
 
     
     if is_main_process() or not DISTRIBUTED:
@@ -351,6 +359,7 @@ def main():
                     image = image.to(device)
   
                     labels = [int(sape) for sape in np.equal(groundTruth,label.cpu())]
+                    print(labels)
                     labels_tensor = torch.tensor(labels, dtype=torch.float32,device=device)
 
 
@@ -378,23 +387,26 @@ def main():
 
                     #turn arrays into tensors so that all_gather works
                     predicted_category = torch.tensor(predicted_category,device=device)
+                    print(f"gpu : {dist.get_rank} -> {predicted_category}")
                     gt_category = torch.tensor(gt_category,device=device)
                     #create the containers
-                    predicted_container = [torch.zeros_like(predicted_category) for _ in range(world_size)]
-                    gt_container = predicted_container
+                    predicted_container = [torch.zeros_like(predicted_category) for _ in range(2)]
+                    gt_container = [torch.zeros_like(gt_category) for _ in range(2)]
 
                     #run gather
                     dist.all_gather(predicted_container,predicted_category)
                     dist.all_gather(gt_container,gt_category)
-
                     #concatenate lists and add them to full lists of categories
-                    predictedFull.append([t.item() for t in torch.cat(predicted_container).tolist()])
-                    groundTruthFull.append([t.item() for t in torch.cat(gt_container).tolist()])
+                    predictedFull.append(torch.cat(predicted_container).tolist())
+                    groundTruthFull.append(torch.cat(gt_container).tolist())
                 else:
                     predictedFull.append(predicted_category)
                     groundTruthFull.append(gt_category)
                     
+                print(f"Done: {category}")
 
+            print(groundTruthFull)
+            print(predictedFull)
 
             precisionFinal , recallFinal = process_metrics(groundTruthFull,predictedFull)
 

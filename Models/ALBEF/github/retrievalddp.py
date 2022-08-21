@@ -137,13 +137,13 @@ def main():
     parser.add_argument(
         "--pretrained",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ALBEF/github/pretrained/ALBEF.pth",
         help="Path to the pth file that contains the model's checkpoint"
     )
     parser.add_argument(
         "--labels_path",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
+        default="/vol/teaching/HernandezDiazProject/retrieval_labels.txt",
         help="Path to the txt file containing the labels"
     )
     parser.add_argument(
@@ -153,31 +153,31 @@ def main():
     parser.add_argument(
         "--config",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/ret_places.yaml",
+        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ALBEF/github/configs/Imgclf_places.yaml",
         help="Path to the config file for the task and model"
     )
     parser.add_argument(
         "--annotTrain",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/places365_val.json",
+        default="/vol/teaching/HernandezDiazProject/Data/Utilities/jsonfiles/places365_train_alexsplit.json",
         help="Path to the jsonline file containing the annotations of the dataset"
     )
     parser.add_argument(
         "--annotVal",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieVal.json",
+        default="/vol/teaching/HernandezDiazProject/Data/Utilities/jsonfiles/places365_retrieVal.json",
         help="Path to the json file containing the annotations of the dataset (validation)"
     )
     parser.add_argument(
         "--root_train",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/",
+        default="/vol/teaching/HernandezDiazProject/Data/Places365/trainshmol/data_256",
         help="Path to the images of the dataset (train)"
     )
     parser.add_argument(
         "--root_val",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/",
+        default="/vol/teaching/HernandezDiazProject/Data/Places365/val_256/",
         help="Path to the images of the dataset (validation)"
     )
     parser.add_argument(
@@ -201,13 +201,13 @@ def main():
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=2,
+        default=32,
         help="The number of samples in each batch.",
     )
     parser.add_argument(
         "--num_epochs",
         type=int,
-        default=30,
+        default=50,
         help="The number of epochs to train the model for.",
     )
     parser.add_argument(
