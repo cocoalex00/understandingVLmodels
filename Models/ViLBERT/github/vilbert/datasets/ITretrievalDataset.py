@@ -144,7 +144,8 @@ class ITretrievalPlaces(Dataset):
             #     for w in tokens
             # ]
 
-            tokens = self._tokenizer.encode(entry)
+            tokens = self._tokenizer.encode(tokens)
+            print(tokens)
 
             #tokens = tokens[: max_length - 2]
             
