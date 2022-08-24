@@ -7,6 +7,8 @@ from re import T
 import matplotlib
 matplotlib.use("pdf")
 import matplotlib.pyplot as plt
+from torchsummary import summary 
+from torchviz import make_dot
 import torch
 
 import csv
@@ -33,7 +35,7 @@ try:
 except ModuleNotFoundError:
     APEX_AVAILABLE = False
 
-
+from torch.utils.tensorboard import SummaryWriter
 
 def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_checkpoint,scheduler_checkpoint,Tloss_checkpoint,Vloss_checkpoint,lr_checkpoint, current_epoch, final: bool= False):
     ''' This function saves a checkpoint of the training process to be loaded later
@@ -202,7 +204,7 @@ def main():
     device = torch.device(f"cuda:{torch.cuda.current_device()}" if torch.cuda.is_available() else "cpu") 
     n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
 
-
+    writter = SummaryWriter(f"logs/net")
     print("the device being used is: " + str(device))
     print("number of gpus available: " + str(n_gpu))
     print(f"Using mixed precision training: {APEX_AVAILABLE}")
@@ -226,14 +228,17 @@ def main():
     print("## Loading the Model ##")
     # Load the model and freeze everything up to the last linear layers (Image classifier)
     model = VILBertForImageClassification(args.config_file, args.num_labels, args.from_pretrained,device)
+
+    print(model)
     # Only train the last classifier
-    model.vilbertBase.requires_grad_(False)
+    #model.vilbertBase.requires_grad_(False)
 
     for name, param in model.named_parameters():
         if param.requires_grad == True:
             print(name)
 
     
+
 
     print("## Model Loaded ##")
 
@@ -323,11 +328,15 @@ def main():
                 labels = torch.argmax(target,1)
                 labels = torch.tensor([t.type(torch.LongTensor)for t in labels], device=device)
 
-
+                #writter.add_graph(model,(textInput, features, spatials, segment_ids, input_mask, image_mask),True)
                 ### Forward pass ###
                 with amp.autocast(): # Cast from f32 to f16 
                     outputs, no, _, _, _, _, _, _, _, _, _, _, _, = model(textInput, features, spatials, segment_ids, input_mask, image_mask)
                 
+                   
+
+                    make_dot(outputs).render("sape", format="png")
+                    sys.exit(1)
                     print(outputs.shape)
                     print(labels.shape)
                     # Calculate batch loss
@@ -370,6 +379,7 @@ def main():
             running_loss_val = 0 # Keep track of avg loss for each epoch (val)
             for i, batch in enumerate(valDL):
 
+
                 # Data related stuff
                 batch = [t.cuda(device=device, non_blocking=True) for t in batch]
                 textInput, features, spatials, segment_ids, input_mask, image_mask, co_attention_mask, target = batch
@@ -396,7 +406,8 @@ def main():
             # Update the progress bar 
             pbarTrain.set_description(f"epoch: {epoch} / training loss: {round(epochLoss,3)} / validation loss: {round(epochLossVal,3)} / lr: {warmupScheduler.get_last_lr()[0]}")
     except Exception as e:
-        print(e)
+        import traceback
+        traceback.print_exc
         # when sigterm caught, save checkpoint and exit
         
         # Check for dataparallel, the model state dictionary changes if wrapped arround nn.dataparallel

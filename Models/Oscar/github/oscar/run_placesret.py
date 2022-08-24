@@ -227,6 +227,7 @@ class Places365(Dataset):
                 input_mask = input_mask + [1 if mask_padding_with_zero else 0] * img_feat.shape[0]
                 # segment_ids = segment_ids + [sequence_b_segment_id] * img_feat.shape[0]
             padding_matrix = torch.zeros((2*self.args.max_img_seq_length - img_feat.shape[0], img_feat.shape[1]))
+            print(img_feat.shape[1])
             img_feat = torch.cat((img_feat, padding_matrix), 0)
             if self.args.max_img_seq_length > 0:
                 input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_matrix.shape[0])

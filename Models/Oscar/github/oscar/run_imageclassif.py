@@ -88,11 +88,11 @@ def load_obj_tsv(fname, topk=None):
 def _load_dataset(args, name):
     processor = processors[args.task_name]()
     if name == 'train':
-        examples = processor.get_train_examples(args.data_dir,  'places365_train_alexsplit.json')
+        examples = processor.get_train_examples(args.data_dir,  'totest.json')
     elif name == 'val':
         examples = processor.get_dev_examples(args.data_dir, 'places365_val.json')
     elif name == 'test':
-        examples = processor.get_dev_examples(args.data_dir, 'places365_test_alexsplit.json')
+        examples = processor.get_dev_examples(args.data_dir, 'totest.json')
     return examples
 
 class Places365(Dataset):
@@ -144,9 +144,9 @@ class Places365(Dataset):
         #     input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_length)
         #     segment_ids = segment_ids + ([pad_token_segment_id] * padding_length)
 
-        assert len(input_ids) == self.args.max_seq_length
-        assert len(input_mask) == self.args.max_seq_length
-        assert len(segment_ids) == self.args.max_seq_length
+        # assert len(input_ids) == self.args.max_seq_length
+        # assert len(input_mask) == self.args.max_seq_length
+        # assert len(segment_ids) == self.args.max_seq_length
 
         # image features
 
@@ -203,17 +203,33 @@ class Places365(Dataset):
                 input_mask = input_mask + [1 if mask_padding_with_zero else 0] * img_feat.shape[0]
                 # segment_ids += [sequence_b_segment_id] * img_feat.shape[0]
         else:
+
+
             if self.args.max_img_seq_length > 0:
+                # onlymask = 
+                #print("=")
+                #print(input_mask)
                 input_mask = input_mask + [1 if mask_padding_with_zero else 0] * img_feat.shape[0]
+                #print("!")
+                #print(input_mask)
                 # segment_ids = segment_ids + [sequence_b_segment_id] * img_feat.shape[0]
             padding_matrix = torch.zeros((2*self.args.max_img_seq_length - img_feat.shape[0], img_feat.shape[1]))
             img_feat = torch.cat((img_feat, padding_matrix), 0)
             if self.args.max_img_seq_length > 0:
+                #print("$")
+                #print(input_mask)
+
                 input_mask = input_mask + ([0 if mask_padding_with_zero else 1] * padding_matrix.shape[0])
+                #print("£")
+                #print(torch.tensor(input_mask).shape)
                 # segment_ids = segment_ids + [pad_token_segment_id] * padding_matrix.shape[0]
 
         label_id = example.label
 
+        #print("%")
+        #print(input_ids)
+        print(torch.tensor(segment_ids, dtype=torch.long).shape)
+        print(torch.tensor(input_ids, dtype=torch.long).shape)
         return (torch.tensor(input_ids, dtype=torch.long),
                 torch.tensor(input_mask, dtype=torch.long),
                 torch.tensor(segment_ids, dtype=torch.long),

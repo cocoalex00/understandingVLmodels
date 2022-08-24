@@ -1,15 +1,24 @@
 # Copyright (c) Alejandro Hernandez Diaz.
 
-# This source code implements the training script to fine-tune the adapted ALBEF model to image classification.
+# This source code implements the training script to fine-tune the adapted LXMERT model to image classification.
 
 # imports 
-from selectors import EpollSelector
-import matplotlib.pyplot as plt
-import torch
+import enum
 import matplotlib
 matplotlib.use("pdf")
-import traceback 
+import matplotlib.pyplot as plt
+import torch
+
+from torch.utils.data import DataLoader
+from vilt.modules import ViLTransformerSS
+from vilt.datasets.Places_dataset import Places365
+import functools
 import pandas as pd
+
+import traceback
+
+
+from vilt.config import ex
 
 import csv
 import signal
@@ -20,33 +29,26 @@ import numpy as np
 import random 
 from tqdm import tqdm
 import argparse
-import yaml
-import utils
-from dataset import create_sampler,create_loader
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 
-from distribuido import setup_for_distributed, save_on_master, is_main_process
-
-
-
-from torch.utils.data import DataLoader
-from transformers import   BertTokenizer
-from dataset.places_dataset import places365
-from models.model_imgclf import ALBEF
+from transformers import  get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, BertTokenizer
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     ReduceLROnPlateau
 )
-
+from torch.nn import CrossEntropyLoss
 try:
     import torch.cuda.amp as amp
     APEX_AVAILABLE = True
 except ModuleNotFoundError:
     APEX_AVAILABLE = False
 
+from distribuido import setup_for_distributed, save_on_master, is_main_process
+
+
 gpu_list = "0,1,2,3"
-os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
+#os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
 
 def init_distributed():
     # Initializes the distributed backend which will take care of synchronizing nodes/GPUs
@@ -69,6 +71,38 @@ def init_distributed():
     dist.barrier()
 
 
+def save_checkpoint(folder_path,model_checkpoint,optimizer_checkpoint,warmup_checkpoint,scheduler_checkpoint,Tloss_checkpoint,Vloss_checkpoint,lr_checkpoint, current_epoch, final: bool= False):
+    ''' This function saves a checkpoint of the training process to be loaded later
+        - model_checkpoint: model's state dictionary
+        - optimizer_checkpoint: optimizers's state dictionary
+        - warmup_checkpoint: warmup scheduler's state dictionary
+        - scheduler_checkpoint: scheduler's state dictionary
+        - Tloss_checkpoint: list of training losses up to that point
+        - Vloss_checkpoint: list of validation losses up to that point
+        - lr_checkpoint: list of past learning rates
+        - current_epoch: current training epoch
+    '''
+    print("--Saving checkpoint--")
+    # Create the checkpoint dictionary
+    checkpoint = {
+        'model_checkpoint': model_checkpoint,
+        'optimizer_checkpoint': optimizer_checkpoint,
+        'warmup_checkpoint': warmup_checkpoint,
+        'scheduler_checkpoint': scheduler_checkpoint,
+        'Tloss': Tloss_checkpoint,
+        'Vloss': Vloss_checkpoint,
+        'lr': lr_checkpoint,
+        'current_epoch': current_epoch
+    }
+    # Save to checkpoint file, use different name for final checkpoint #
+    if not os.path.exists(folder_path + "/"):
+        os.makedirs(folder_path+"/")
+
+    if final:
+        torch.save(obj=checkpoint, f=f"{folder_path}/ViLTFineTuned.pth")
+    else:
+        torch.save(obj=checkpoint, f=f"{folder_path}/checkpointViLT.pth")
+    print("--Checkpoint saved--")
 
 
 
@@ -124,8 +158,78 @@ def process_metrics(fullGT, fullPreds):
     return [precisionAt1, precisionAt5, precisionAt10], [recallAt1,recallAt5,recallAt10]
 
 
+
+MAXSEQUENCELENGTH = 7
+def create_text_batch(text: str, tokenizer, mlm_collator, batch_size= 32):
+
+    
+    encoding = tokenizer(
+        text,
+        padding="max_length",
+        truncation=True,
+        max_length=MAXSEQUENCELENGTH,
+        return_special_tokens_mask=True,
+    )
+    print(text)
+    print(encoding)
+
+    text_ids = [encoding["input_ids"] for _ in range(batch_size)]
+    text_labels_mlm = [encoding["input_ids"] for _ in range(batch_size)]
+    text_labels = [[-100 for _ in range(MAXSEQUENCELENGTH)] for _ in range(batch_size)]
+    attention_mask = [encoding["attention_mask"] for _ in range(batch_size)]
+
+
+    
+    #dict_batch = [dict for _ in range(batch_size)]
+
+    # print(dict_batch["text"][0])
+
+    # txt_keys = [k for k in list(dict_batch.keys()) if "text" in k]
+
+    #text = 
+
+    # if len(txt_keys) != 0:
+    #     texts = [[d[0] for d in dict_batch[txt_key]] for txt_key in txt_keys]
+    #     encodings = [[d[1] for d in dict_batch[txt_key]] for txt_key in txt_keys]
+    #     draw_text_len = len(encodings)
+    #     flatten_encodings = [e for encoding in encodings for e in encoding]
+    #     flatten_mlms = mlm_collator(flatten_encodings)
+
+    #     for i, txt_key in enumerate(txt_keys):
+    #         texts, encodings = (
+    #             [d[0] for d in dict_batch[txt_key]],
+    #             [d[1] for d in dict_batch[txt_key]],
+    #         )
+
+    #         mlm_ids, mlm_labels = (
+    #             flatten_mlms["input_ids"][batch_size * (i) : batch_size * (i + 1)],
+    #             flatten_mlms["labels"][batch_size * (i) : batch_size * (i + 1)],
+    #         )
+
+    #         input_ids = torch.zeros_like(mlm_ids)
+    #         attention_mask = torch.zeros_like(mlm_ids)
+    #         for _i, encoding in enumerate(encodings):
+    #             _input_ids, _attention_mask = (
+    #                 torch.tensor(encoding["input_ids"]),
+    #                 torch.tensor(encoding["attention_mask"]),
+    #             )
+    #             input_ids[_i, : len(_input_ids)] = _input_ids
+    #             attention_mask[_i, : len(_attention_mask)] = _attention_mask
+
+        # dict_batch[txt_key] = texts
+        # dict_batch[f"{txt_key}_ids"] = input_ids
+        # dict_batch[f"{txt_key}_labels"] = torch.full_like(input_ids, -100)
+        # dict_batch[f"{txt_key}_ids_mlm"] = mlm_ids
+        # dict_batch[f"{txt_key}_labels_mlm"] = mlm_labels
+        # dict_batch[f"{txt_key}_masks"] = attention_mask
+
+    return text_ids, text_labels_mlm, text_labels, attention_mask
+
+
 #### Main Script ###
-def main():
+
+@ex.automain
+def main(_config):
     n_gpu = torch.cuda.device_count() 
     # check for multiple gpus and spawn processes
     if n_gpu > 1:
@@ -135,45 +239,23 @@ def main():
     else:
         DISTRIBUTED = False
 
-    
-    # initialise the sigterm handler
-    signal.signal(signal.SIGTERM, sigterm_handler)
-
     # Pipeline everything by using an argument parser
     parser = argparse.ArgumentParser()
-
     parser.add_argument(
         "--pretrained",
+        #default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
+        default = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ViLT/github/pretrained/vilt_200k_mlm_itm.ckpt",
         type=str,
-        #default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
-        default= "/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ALBEF/github/pretrained/ALBEF.pth",
-        #default = "/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/pretrained/ALBEF.pth",
-        help="Path to the pth file that contains the model's checkpoint"
+        help="Path to the checkpoint file containing the model's weights and stuff",
     )
     parser.add_argument(
-        "--local_rank",
-        type=int
-    )
-    parser.add_argument(
-        "--config",
+        "--data_path",
+        #default="/vol/teaching/HernandezDiazProject/Data/arrowfiles",
+        default = "/mnt/c/Users/aleja/Desktop/MSc Project/totest",
         type=str,
-        default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/ALBEF/github/configs/Imgclf_places.yaml",
-        #default= "/vol/teaching/HernandezDiazProject/understandingVLmodels/Models/ALBEF/github/configs/Imgclf_places.yaml",
-        help="Path to the config file for the task and model"
+        help="Path to the folder where the dataset file (.arrow) lives",
     )
-    parser.add_argument(
-        "--annotTest",
-        type=str,
-        default="/vol/teaching/HernandezDiazProject/places365_test_10retrieval.json",
-        help="Path to the jsonline file containing the annotations of the dataset"
-    )
-    parser.add_argument(
-        "--root_test",
-        type=str,
-       # default="/mnt/c/Users/aleja/Desktop/MSc Project/images/val_256/",
-        default="/vol/teaching/HernandezDiazProject/Data/Places365/trainshmol/data_256/",
-        help="Path to the images of the dataset (train)"
-    )
+    ####
     parser.add_argument(
         "--num_labels",
         default=1,
@@ -182,17 +264,17 @@ def main():
     )
     parser.add_argument(
         "--output_dir",
-        default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ALBEF/ret/out",
+        #default="/vol/teaching/HernandezDiazProject/understandingVLmodels/Experiments/ViLT/imgClf/outfull",
+        default ="/mnt/c/Users/aleja/Desktop/MSc Project/",
         type=str,
         help="The output directory where the fine-tuned model and final plots will be saved.",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=365,
+        default=2,
         help="The number of samples in each batch.",
     )
-
     parser.add_argument(
         "--seed",
         type=int,
@@ -202,16 +284,16 @@ def main():
     parser.add_argument(
         "--labels_path",
         type=str,
-        #default="/vol/teaching/HernandezDiazProject/retrieval_labels.txt",
+       # default="/vol/teaching/HernandezDiazProject/retrieval_labels.txt",
         default="/mnt/c/Users/aleja/Desktop/MSc Project/totest/retrieval_labels.txt",
         help="random seed for initialisation in multiple GPUs"
     )
+    parser.add_argument
 
     # Get all arguments 
     args = parser.parse_args()
 
-    # load the config file
-    config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
+
 
     # Need to set up a seed so that all the models initialised in the different GPUs are the same
     torch.manual_seed(args.seed)
@@ -220,13 +302,14 @@ def main():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False          # This may allow training on the newer gpus idk
 
+
+
     # CUDA check 
     if dist.is_available() and dist.is_initialized():
         device = "cuda:" + str(dist.get_rank())
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu") 
 
-    n_gpu = torch.cuda.device_count()                                       # Check the number of GPUs available
 
     if is_main_process() or not DISTRIBUTED:
         print("the device being used is: " + str(device))
@@ -241,11 +324,19 @@ def main():
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the dataset ##")
 
-    TestDataset = places365(args.annotTest, args.root_test)
+    # Load the custom data collator as well as the tokenizer 
+    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    collator = DataCollatorForLanguageModeling(tokenizer,False)
 
+    TestDataset = Places365(args.data_path, split="val")   ####### Change this to train for the HTCONDOR!!!!!!!
 
     if DISTRIBUTED:
-        testSampler = DistributedSampler(dataset=TestDataset, shuffle=False)   
+        testSampler = DistributedSampler(dataset=TestDataset, shuffle=True)   
+        # create the two custom collator functions
+        collateTest = functools.partial(
+                TestDataset.collate, mlm_collator=collator,
+            )
+        testSampler = DistributedSampler(dataset=TestDataset, shuffle=True)   
        
 
         testDl = DataLoader(
@@ -253,17 +344,20 @@ def main():
             batch_size= args.batch_size,
             #shuffle= True,
             pin_memory=True,
-            sampler=testSampler
+            sampler=testSampler,
+            collate_fn=collateTest,
         )
     else:
+        collateTest = functools.partial(
+                TestDataset.collate, mlm_collator=collator,
+            )
         testDl = DataLoader(
             dataset= TestDataset,
             batch_size= args.batch_size,
             shuffle= True,
             pin_memory=True,
+            collate_fn=collateTest,
         )
-
-
 
     if is_main_process()  or not DISTRIBUTED:
         print("## Dataset loaded succesfully ##")
@@ -273,24 +367,19 @@ def main():
     # Load the Model
     if is_main_process() or not DISTRIBUTED:
         print("## Loading the Model ##")
-
-    
     # Load the model and freeze everything up to the last linear layers (Image classifier)
-    model = ALBEF(config=config, text_encoder="bert-base-uncased", num_labels = args.num_labels)
-    tokenizer = BertTokenizer.from_pretrained("bert-base-uncased") 
-
-    labels_to_text = pd.read_csv(args.labels_path, header=None, delimiter = "/")[0].values.tolist()
+    model = ViLTransformerSS(_config,"placesret")
 
     ##################################################### Checkpoint or pre-trained ###################################################
-    if os.path.exists(os.path.join(args.pretrained,"ALBEFFineTuned.pth")):
+    if os.path.exists(os.path.join(args.pretrained,"ViLTFineTuned.pth")):
         if is_main_process() or not DISTRIBUTED:
             print(f"Checkpoint found, loading")
 
-        checkpoint = torch.load(os.path.join(args.pretrained,"ALBEFFineTuned.pth"))
+        checkpoint = torch.load(os.path.join(args.pretrained,"ViLTFineTuned.pth"))
 
         # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
         if DISTRIBUTED:
-            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False, map_location=device)
+            model.module.load_state_dict(checkpoint['model_checkpoint'], strict= False)
         else:
             model.load_state_dict(checkpoint['model_checkpoint'], strict= False)
 
@@ -298,18 +387,13 @@ def main():
             print("Checkpoint loaded")
     else:
         if is_main_process() or not DISTRIBUTED:
-            print("No checkpoint found")
-            #sys.exit(1)
+            print("No checkpoint found, starting fine tunning from base pre-trained model")
 
 
-
-#    model.requires_grad_(False)
-
-    
     if is_main_process() or not DISTRIBUTED:
         print("## Model Loaded ##")
 
-    #################################################### Wrap up model with DDP and send to device #################################################
+   #################################################### Wrap up model with DDP and send to device #################################################
     if DISTRIBUTED:
         model =  nn.SyncBatchNorm.convert_sync_batchnorm(model)
         local_rank = int(os.environ["LOCAL_RANK"])
@@ -322,14 +406,47 @@ def main():
 
 
 
-
-    ######################################################### Training loop ############################################################
-
     
+
+    ############################################### loss functions, optims, schedulers ##################################################
+    criterion = CrossEntropyLoss()
+
+    # Lists to keep track of nice stuff like loss and lr 
+    testLoss = []
+    accuracyTest = []
+
+
+    # # Check for available checkpoints 
+    # if os.path.exists(os.path.join(args.checkpoint_dir,"checkpointViLT.pth")):
+    #     print(f"Checkpoint found, loading")
+    #     checkpoint = torch.load(os.path.join(args.checkpoint_dir,"checkpointViLT.pth"))
+    #     start_epoch = checkpoint['current_epoch']
+    #     learningRate = checkpoint['lr']
+    #     trainingLoss = checkpoint['Tloss']
+    #     valLoss = checkpoint['Vloss']
+
+    #     # Check if model has been wrapped with nn.DataParallel. This makes loading the checkpoint a bit different
+    #     if isinstance(model, nn.DataParallel):
+    #         model.module.load_state_dict(checkpoint['model_checkpoint'])
+    #     else:
+    #         model.load_state_dict(checkpoint['model_checkpoint'])
+    #     optimizer.load_state_dict(checkpoint['optimizer_checkpoint'])
+    #     warmupScheduler.load_state_dict(checkpoint['warmup_checkpoint'])
+    #     reducelrScheduler.load_state_dict(checkpoint['scheduler_checkpoint'])
+
+
+    #     print("Checkpoint loaded")
+    # else:
+    #     print("No checkpoint found, starting fine tunning from base pre-trained model")
+ 
+    labels_to_text = pd.read_csv(args.labels_path, header=None, delimiter = "/")[0].values.tolist()
+
+
     print("***** Running inference *****")
     print("  Batch size: ", args.batch_size)
 
 
+    
     try:
         with torch.no_grad():
         ########################################### Validation  #####################################################
@@ -341,10 +458,18 @@ def main():
             groundTruthFull = []
             for index, category in enumerate(labels_to_text[:3]):
 
-                text = [category for _ in range (args.batch_size)]
-                print(text)
+                #text = [category for _ in range (args.batch_size)]
 
-                text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device) 
+                text_ids, text_labels_mlm, text_labels, attention_mask = create_text_batch(category,tokenizer,collator,args.batch_size)
+
+                text_tensor = torch.tensor(text_ids).to(device)
+                text_labels_mlm_tensor = torch.tensor(text_labels_mlm).to(device)
+                text_labels_tensor = torch.tensor(text_labels).to(device)
+                attention_mask_tensor = torch.tensor(attention_mask).to(device)
+
+
+                print(text_tensor)
+                ##text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device) 
                 
 
                 groundTruth = [index]* args.batch_size 
@@ -355,26 +480,37 @@ def main():
 
 
                 for i, batch in enumerate(testDl):
+
+                    #print(batch)
                     # Data related stuff
-                    image, _, label = batch
-                    image = image.to(device)
-  
-                    labels = [int(sape) for sape in np.equal(groundTruth,label.cpu())]
-                    print(labels)
-                    labels_tensor = torch.tensor(labels, dtype=torch.float32,device=device)
+                    #print(batch["label"])
+                    label = torch.tensor(batch["label"]).squeeze().tolist()
+                    #print(label)
+                    labels = [int(sape) for sape in np.equal(groundTruth,label)]
+                    #print(labels)
+                    batch["text_ids"] = text_tensor
+                    batch["text_labels"] = text_labels_tensor
+                    batch["text_masks"] = attention_mask_tensor
+                    batch["text_labels_mlm"] = text_labels_mlm_tensor
 
+                    
 
-                     # Tokenize sentence
+                    # label = torch.tensor(batch["label"]).to(device).squeeze()
+                    # for i in batch.keys():
+                    #     if type(batch[i]) != list:
+                    #         batch[i] = batch[i].to(device)
 
-
+                    batch["image"] = [batch["image"][0].to(device)]
+                
+                    print(batch)
                     ### Forward pass ###
                     with amp.autocast(): # Cast from f32 to f16 
-                        output = model(image,text_inputs)
+                        output = model(batch)
 
                     #labels = torch.tensor([t.type(torch.LongTensor)for t in labels], device=device)
 
 
-                    predicted_batch = torch.nn.functional.sigmoid(torch.squeeze(output))
+                    predicted_batch = torch.nn.functional.sigmoid(torch.squeeze(output["imgcls_logits"]))
 
                     predicted_batch = predicted_batch.tolist()
 
@@ -433,17 +569,15 @@ def main():
             dist.barrier()
         sys.exit(0)
 
-    
-    ###################################################### Create plots and save them ########################################################
+       ###################################################### Create plots and save them ########################################################
     if is_main_process() or not DISTRIBUTED:
 
         # Also save the lists and stats in a csv to create other plots if needed
-        with open(f"{args.output_dir}/ALBEFretInference.csv", "w") as f:
+        with open(f"{args.output_dir}/ALBEFInference.csv", "w") as f:
             write = csv.writer(f)
             write.writerow(["p@1","p@5","p@10"])
             write.writerow([avgp1,avgp5,avgp10])
             write.writerow(["r@1","r@5","r@10"])
             write.writerow([avgrec1,avgrec5,avgrec10])
         
-if __name__=="__main__":
-    main()
+

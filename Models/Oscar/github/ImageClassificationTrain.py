@@ -96,7 +96,7 @@ def main():
                         help="The input data dir. Should contain the .json files for the task.")
     parser.add_argument("--model_type", default="bert", type=str,
                         help="Model type selected in the list: ")
-    parser.add_argument("--model_name_or_path", default="pretrained/base-vg-labels/ep_107_1192087", type=str,
+    parser.add_argument("--model_name_or_path", default="/mnt/c/Users/aleja/Desktop/MSc Project/Implementation/Models/Oscar/github/pretrained/base-vg-labels/ep_107_1192087", type=str,
                         help="Path to pre-trained model or shortcut name selected in the list: ")
     parser.add_argument("--task_name", default="places", type=str, 
                         help="The name of the task to train selected in the list: ")
